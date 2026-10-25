@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Metalmind</string>
+    <string name="placeholder">Escribe una nota…</string>
+    <string name="save">Guardar</string>
+    <string name="saved">Guardada: %1$s</string>
+    <string name="change_folder">Cambiar carpeta</string>
+    <string name="choose_folder">Elegir carpeta del vault</string>
+    <string name="choose_folder_explain">Las notas se guardan como archivos .md nuevos en una carpeta de tu vault. La sincronización la hace Syncthing, git o lo que ya uses.</string>
+    <string name="folder_lost">Ya no hay acceso a la carpeta. Elígela de nuevo.</string>
+    <string name="error_write">No se pudo guardar: %1$s</string>
+    <string name="error_name_taken">Ya hay demasiadas notas llamadas %1$s.md</string>
+</resources>
