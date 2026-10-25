@@ -31,6 +31,12 @@ class TagIndexTest {
     }
 
     @Test
+    fun `con las mismas notas, por nombre sin mayúsculas`() {
+        val index = index("#Zig #apple #Banana")
+        assertEquals(listOf("apple", "Banana", "Zig"), index.suggestions("").map { it.name })
+    }
+
+    @Test
     fun `primero los que empiezan así y después los que lo contienen`() {
         val index = index("#trust", "#rust #rust-async", "#rust", "#pruebas")
         assertEquals(listOf("rust", "rust-async", "pruebas", "trust"), index.suggestions("ru").map { it.name })
@@ -88,6 +94,9 @@ class TagIndexTest {
     @Test
     fun `una caché rota o de otro formato queda vacía`() {
         assertEquals(0, TagIndex.read(ByteArrayInputStream(byteArrayOf(0, 0, 0, 1, 0))).noteCount)
+        // Conteo negativo y conteo enorme.
+        assertEquals(0, TagIndex.read(ByteArrayInputStream(byteArrayOf(0, 0, 0, 1, -1, -1, -1, -1))).noteCount)
+        assertEquals(0, TagIndex.read(ByteArrayInputStream(byteArrayOf(0, 0, 0, 1, 127, -1, -1, -1))).noteCount)
         assertEquals(0, TagIndex.read(ByteArrayInputStream(byteArrayOf(0, 0, 0, 99))).noteCount)
         assertEquals(0, TagIndex.read(ByteArrayInputStream(byteArrayOf())).noteCount)
     }

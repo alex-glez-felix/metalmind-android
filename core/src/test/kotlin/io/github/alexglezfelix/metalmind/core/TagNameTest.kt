@@ -48,6 +48,19 @@ class TagNameTest {
     }
 
     @Test
+    fun `como el case folding de Unicode`() {
+        // Los casos de `key.rs` de Metalmind.
+        assertNotEquals(TagName.key("ı"), TagName.key("i"))
+        assertEquals(TagName.key("ı"), TagName.key("ı"))
+        assertEquals(TagName.key("İ"), TagName.key("i\u0307"))
+        assertEquals(TagName.key("σίσυφος"), TagName.key("ΣΊΣΥΦΟΣ"))
+        assertEquals(TagName.key("σίσ"), TagName.key("ΣΊΣ"))
+        assertEquals(TagName.key("ς"), TagName.key("σ"))
+        assertEquals(TagName.key("ſ"), TagName.key("s"))
+        assertEquals(TagName.key("ﬀ"), TagName.key("FF"))
+    }
+
+    @Test
     fun `los acentos distinguen`() {
         assertNotEquals(TagName.key("canción"), TagName.key("cancion"))
         assertNotEquals(TagName.key("año"), TagName.key("ano"))

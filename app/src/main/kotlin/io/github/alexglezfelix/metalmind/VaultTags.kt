@@ -6,6 +6,7 @@ import android.provider.DocumentsContract
 import android.provider.DocumentsContract.Document
 import io.github.alexglezfelix.metalmind.core.NoteFile
 import io.github.alexglezfelix.metalmind.core.TagIndex
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
 import java.security.MessageDigest
@@ -77,20 +78,30 @@ class VaultTags(context: Context, private val tree: Uri) {
     }
 
     private fun read(note: NoteFile): String? {
-        // Un "markdown" enorme no es una nota: se cuenta sin tags y no se vuelve a leer.
-        if (note.size > MAX_NOTE_BYTES) return ""
         val uri = DocumentsContract.buildDocumentUriUsingTree(tree, note.id)
         return try {
-            resolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
+            resolver.openInputStream(uri)?.use { input ->
+                // Hasta el límite aunque el proveedor no sepa el tamaño: un
+                // "markdown" enorme no es una nota, se cuenta sin tags.
+                val bytes = ByteArrayOutputStream()
+                val buffer = ByteArray(16 * 1024)
+                while (bytes.size() <= MAX_NOTE_BYTES) {
+                    val n = input.read(buffer)
+                    if (n < 0) break
+                    bytes.write(buffer, 0, n)
+                }
+                if (bytes.size() > MAX_NOTE_BYTES) "" else bytes.toString(Charsets.UTF_8.name())
+            }
         } catch (_: IOException) {
             null
-        } catch (_: SecurityException) {
+        } catch (_: RuntimeException) {
+            // SecurityException, o lo que relance el proveedor: se reintenta la próxima vez.
             null
         }
     }
 
     private companion object {
-        const val MAX_NOTE_BYTES = 4L * 1024 * 1024
+        const val MAX_NOTE_BYTES = 4 * 1024 * 1024
 
         fun hash(s: String): String =
             MessageDigest.getInstance("SHA-1").digest(s.toByteArray()).joinToString("") { "%02x".format(it) }

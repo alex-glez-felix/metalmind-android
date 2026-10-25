@@ -50,6 +50,20 @@ class TagScannerTest {
     }
 
     @Test
+    fun `los tags de links y fórmulas no cuentan`() {
+        assertEquals(
+            listOf("fuera", "fin"),
+            tags("[ver #rust](https://x.org) [[nota|alias #x]] ![img #y](a.png \"t #z\") #fuera \$#no\$ \$x #m\$ \$\$\n#display\n\$\$ #fin"),
+        )
+    }
+
+    @Test
+    fun `lo que parece link o fórmula sin serlo no tapa los tags`() {
+        assertEquals(listOf("a", "b", "c", "d"), tags("[sin cierre #a [x] #b \$ #c\$ \$5 y #d"))
+        assertEquals(listOf("tag"), tags("[[\n#tag]]"))
+    }
+
+    @Test
     fun `un backtick sin cerrar no se come el resto`() {
         assertEquals(listOf("tag"), tags("un ` suelto #tag"))
     }
@@ -69,6 +83,14 @@ class TagScannerTest {
     fun `tags del frontmatter entre corchetes`() {
         assertEquals(listOf("rust", "2024", "7"), tags("---\ntags: [rust, \"2024\", 'a, b', 007] # nota\n---\n"))
         assertEquals(listOf("a", "b"), tags("---\ntags: [\n  a,\n  b,\n]\n---\n"))
+    }
+
+    @Test
+    fun `valores como los lee YAML 1_2`() {
+        assertEquals(
+            listOf("rust", "31", "15", "1", "1000", "true", "false"),
+            tags("---\ntags: [\"  rust \", 0x1F, 0o17, 1.0, 1e3, True, FALSE, 1.5, null]\n---\n"),
+        )
     }
 
     @Test

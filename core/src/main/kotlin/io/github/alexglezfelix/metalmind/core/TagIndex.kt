@@ -5,6 +5,7 @@ import java.io.DataOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.util.Locale
 
 /** Un `.md` del vault tal como lo lista la carpeta, sin leerlo. */
 data class NoteFile(val id: String, val modified: Long, val size: Long)
@@ -28,9 +29,10 @@ class TagIndex private constructor(private val files: Map<String, Entry>) {
     val noteCount: Int get() = files.size
 
     /**
-     * De más notas a menos; con las mismas notas, por nombre. Se muestra la
-     * forma con más apariciones en el vault, y si empatan la primera en orden
-     * de bytes (`Rust` antes que `rust`), como Metalmind (05-tags §6).
+     * De más notas a menos; con las mismas notas, por nombre sin mayúsculas y
+     * después tal cual, como el autocompletado de Metalmind (`complete.rs`). Se
+     * muestra la forma con más apariciones en el vault, y si empatan la primera
+     * en orden de bytes (`Rust` antes que `rust`), como Metalmind (05-tags §6).
      */
     private val tags: List<Tag> by lazy {
         val notes = HashMap<String, Int>()
@@ -49,7 +51,11 @@ class TagIndex private constructor(private val files: Map<String, Entry>) {
                 .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy(TagName.byteOrder) { it.key })
                 .first().key
             Tag(count, name, key)
-        }.sortedWith(compareByDescending<Tag> { it.notes }.thenBy(TagName.byteOrder) { it.name })
+        }.sortedWith(
+            compareByDescending<Tag> { it.notes }
+                .thenBy(TagName.byteOrder) { it.name.lowercase(Locale.ROOT) }
+                .thenBy(TagName.byteOrder) { it.name },
+        )
     }
 
     /**
@@ -110,7 +116,7 @@ class TagIndex private constructor(private val files: Map<String, Entry>) {
 
         val EMPTY = TagIndex(emptyMap())
 
-        /** La caché de [write]; vacío si es de otro formato o está rota. */
+        /** La caché de [write]; vacío si es de otro formato o está rota (truncada, con basura). */
         fun read(input: InputStream): TagIndex = try {
             val data = DataInputStream(input.buffered())
             if (data.readInt() != FORMAT) {
@@ -129,6 +135,11 @@ class TagIndex private constructor(private val files: Map<String, Entry>) {
                 TagIndex(files)
             }
         } catch (_: IOException) {
+            EMPTY
+        } catch (_: RuntimeException) {
+            // Un conteo negativo o enorme: IllegalArgumentException, NegativeArraySizeException…
+            EMPTY
+        } catch (_: OutOfMemoryError) {
             EMPTY
         }
     }

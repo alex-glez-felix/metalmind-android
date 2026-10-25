@@ -51,11 +51,28 @@ object TagName {
     fun nfc(s: String): String = Normalizer.normalize(s, Normalizer.Form.NFC)
 
     /**
-     * Como el case folding completo de Unicode (`ß` y `ẞ` → `ss`): minúsculas,
-     * mayúsculas y otra vez minúsculas junta lo que el folding junta (`ẞ` no
-     * tiene mayúscula de dos letras, `ß` sí).
+     * Como el case folding completo de Unicode, que Java no trae: carácter por
+     * carácter (así la sigma final no depende de lo que la rodea, `ς` = `σ`),
+     * minúsculas, mayúsculas y otra vez minúsculas junta lo que el folding
+     * junta (`ß`, `ẞ` y `SS` → `ss`; `ſ` → `s`). La `ı` sin punto es la
+     * excepción: no tiene folding, y por mayúsculas acabaría en `i`.
      */
-    private fun fold(s: String): String = s.lowercase(Locale.ROOT).uppercase(Locale.ROOT).lowercase(Locale.ROOT)
+    private fun fold(s: String): String {
+        val out = StringBuilder(s.length)
+        var i = 0
+        while (i < s.length) {
+            val cp = s.codePointAt(i)
+            if (cp == DOTLESS_I) {
+                out.appendCodePoint(cp)
+            } else {
+                out.append(String(Character.toChars(cp)).lowercase(Locale.ROOT).uppercase(Locale.ROOT).lowercase(Locale.ROOT))
+            }
+            i += Character.charCount(cp)
+        }
+        return out.toString()
+    }
+
+    private const val DOTLESS_I = 0x0131
 
     /** El orden de bytes de UTF-8, el del desempate de Metalmind (`Rust` antes que `rust`). */
     val byteOrder: Comparator<String> = Comparator { a, b ->
