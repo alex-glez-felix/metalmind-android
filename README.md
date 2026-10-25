@@ -21,6 +21,12 @@ Sin cuentas, sin servidores, sin red, sin analítica, sin permisos: la carpeta s
 2. Escribe y guarda con el botón o con la tecla de acción del teclado (con teclado físico, `Ctrl+Enter`). La tecla de acción guarda en vez de saltar de línea: para notas de varias líneas, pega el texto.
 3. Para cambiar de carpeta, **Cambiar carpeta** arriba a la derecha.
 
+### Entrar más rápido
+
+- **Compartir con Metalmind**: desde cualquier app, *Compartir* → *Compartir con Metalmind* abre la captura con el texto o el link ya puestos. Con un link de un navegador, el título de la página va en la primera línea (y da el nombre del archivo) y la URL debajo. Al guardar, vuelves a la app de donde compartiste.
+- **Tile de Ajustes rápidos**: edita los Ajustes rápidos (el lápiz del panel de notificaciones) y arrastra *Nota rápida*. Con el teléfono bloqueado, primero pide desbloquear.
+- **Widget**: mantén pulsada la pantalla de inicio → *Widgets* → *Metalmind*. Es una barra que abre la captura.
+
 ## Instalar el APK
 
 Todavía no hay versiones publicadas. Cada build de CI deja el APK debug como artefacto:

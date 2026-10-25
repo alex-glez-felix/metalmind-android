@@ -10,4 +10,7 @@
     <string name="folder_lost">Ya no hay acceso a la carpeta. Elígela de nuevo.</string>
     <string name="error_write">No se pudo guardar: %1$s</string>
     <string name="error_name_taken">Ya hay demasiadas notas llamadas %1$s.md</string>
+    <string name="share_label">Compartir con Metalmind</string>
+    <string name="tile_label">Nota rápida</string>
+    <string name="widget_description">Abre la captura de Metalmind</string>
 </resources>
