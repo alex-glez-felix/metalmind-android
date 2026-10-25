@@ -1,7 +1,9 @@
 package io.github.alexglezfelix.metalmind
 
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -58,11 +60,14 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import io.github.alexglezfelix.metalmind.core.Capture
 import io.github.alexglezfelix.metalmind.core.CaptureResult
+import io.github.alexglezfelix.metalmind.core.SharedText
 import java.time.LocalDateTime
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -74,11 +79,26 @@ class CaptureActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         val settings = VaultSettings(applicationContext)
+        val shared = sharedText(intent)
         setContent {
             MetalmindTheme {
-                CaptureScreen(settings)
+                CaptureScreen(
+                    settings = settings,
+                    initialText = shared.orEmpty(),
+                    // Al compartir, guardar devuelve a la app de donde se vino.
+                    onSaved = if (shared != null) ({ finish() }) else null,
+                )
             }
         }
+    }
+
+    /** El texto de "Compartir con Metalmind", o `null` si no se abrió así. */
+    private fun sharedText(intent: Intent): String? {
+        if (intent.action != Intent.ACTION_SEND) return null
+        return SharedText.toNote(
+            subject = intent.getCharSequenceExtra(Intent.EXTRA_SUBJECT),
+            text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT),
+        )
     }
 }
 
@@ -104,10 +124,14 @@ private sealed interface Outcome {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CaptureScreen(settings: VaultSettings) {
+private fun CaptureScreen(settings: VaultSettings, initialText: String, onSaved: (() -> Unit)?) {
     val context = LocalContext.current
     var folder by remember { mutableStateOf(settings.folder) }
-    var text by rememberSaveable { mutableStateOf("") }
+    // Con el cursor al final, para seguir escribiendo después de lo compartido.
+    var field by rememberSaveable(stateSaver = TextFieldValue.Saver) {
+        mutableStateOf(TextFieldValue(initialText, TextRange(initialText.length)))
+    }
+    val text = field.text
     var saving by remember { mutableStateOf(false) }
     var folderLost by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
@@ -158,9 +182,15 @@ private fun CaptureScreen(settings: VaultSettings) {
             saving = false
             when (outcome) {
                 is Outcome.Saved -> {
+                    val message = savedFormat.format(outcome.name)
+                    if (onSaved != null) {
+                        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                        onSaved()
+                        return@launch
+                    }
                     // Solo se borra si no se escribió nada más mientras se guardaba.
-                    if (text == toSave) text = ""
-                    snackbar.showSnackbar(savedFormat.format(outcome.name), duration = SnackbarDuration.Short)
+                    if (field.text == toSave) field = TextFieldValue()
+                    snackbar.showSnackbar(message, duration = SnackbarDuration.Short)
                 }
                 is Outcome.Failed -> snackbar.showSnackbar(outcome.message, duration = SnackbarDuration.Long)
                 Outcome.FolderLost -> {
@@ -195,8 +225,8 @@ private fun CaptureScreen(settings: VaultSettings) {
         },
     ) { padding ->
         CaptureField(
-            text = text,
-            onTextChange = { text = it },
+            value = field,
+            onValueChange = { field = it },
             onSave = ::save,
             modifier = Modifier.padding(padding).fillMaxSize(),
         )
@@ -205,8 +235,8 @@ private fun CaptureScreen(settings: VaultSettings) {
 
 @Composable
 private fun CaptureField(
-    text: String,
-    onTextChange: (String) -> Unit,
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
     onSave: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -217,8 +247,8 @@ private fun CaptureField(
         keyboard?.show()
     }
     TextField(
-        value = text,
-        onValueChange = onTextChange,
+        value = value,
+        onValueChange = onValueChange,
         placeholder = { Text(stringResource(R.string.placeholder)) },
         // La tecla de acción del teclado guarda; con teclado físico, Ctrl+Enter.
         keyboardOptions = KeyboardOptions(
