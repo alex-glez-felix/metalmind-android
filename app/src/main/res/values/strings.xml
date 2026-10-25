@@ -12,5 +12,6 @@
     <string name="error_name_taken">Ya hay demasiadas notas llamadas %1$s.md</string>
     <string name="share_label">Compartir con Metalmind</string>
     <string name="tile_label">Nota rápida</string>
-    <string name="widget_description">Abre la captura de Metalmind</string>
+    <string name="widget_label">Nota rápida</string>
+    <string name="widget_description">Escribe una nota nueva en tu vault</string>
 </resources>
