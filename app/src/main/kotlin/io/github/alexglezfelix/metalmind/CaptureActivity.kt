@@ -68,6 +68,8 @@ import androidx.compose.ui.unit.dp
 import io.github.alexglezfelix.metalmind.core.Capture
 import io.github.alexglezfelix.metalmind.core.CaptureResult
 import io.github.alexglezfelix.metalmind.core.SharedText
+import io.github.alexglezfelix.metalmind.core.TagCompletion
+import io.github.alexglezfelix.metalmind.core.TagIndex
 import java.time.LocalDateTime
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -151,6 +153,26 @@ private fun CaptureScreen(settings: VaultSettings, initialText: String, onSaved:
         return
     }
 
+    // Los tags del vault: primero los de la caché, enseguida; después, al día.
+    var tags by remember(current) { mutableStateOf(TagIndex.EMPTY) }
+    LaunchedEffect(current) {
+        withContext(Dispatchers.IO) {
+            val vault = VaultTags(context, current)
+            tags = vault.cached()
+            try {
+                tags = vault.refresh(tags)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Las sugerencias son opcionales: sin acceso a la carpeta, si ya no
+                // existe o si el proveedor falla, quedan las de la caché, y el
+                // guardado dirá lo que haga falta.
+            }
+        }
+    }
+    val query = if (field.selection.collapsed) TagCompletion.at(text, field.selection.end) else null
+    val suggestions = remember(query, tags) { query?.let { tags.suggestions(it.prefix) }.orEmpty() }
+
     val savedFormat = stringResource(R.string.saved)
     val writeErrorFormat = stringResource(R.string.error_write)
     val nameTakenFormat = stringResource(R.string.error_name_taken)
@@ -216,6 +238,14 @@ private fun CaptureScreen(settings: VaultSettings, initialText: String, onSaved:
             )
         },
         snackbarHost = { SnackbarHost(snackbar) },
+        bottomBar = {
+            if (query != null && suggestions.isNotEmpty()) {
+                TagSuggestions(suggestions) { picked ->
+                    val done = TagCompletion.accept(text, query, picked.name)
+                    field = TextFieldValue(done.text, TextRange(done.cursor))
+                }
+            }
+        },
         floatingActionButton = {
             if (text.isNotBlank()) {
                 FloatingActionButton(onClick = ::save) {

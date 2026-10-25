@@ -21,6 +21,12 @@ Sin cuentas, sin servidores, sin red, sin analítica, sin permisos: la carpeta s
 2. Escribe y guarda con el botón o con la tecla de acción del teclado (con teclado físico, `Ctrl+Enter`). La tecla de acción guarda en vez de saltar de línea: para notas de varias líneas, pega el texto.
 3. Para cambiar de carpeta, **Cambiar carpeta** arriba a la derecha.
 
+### Tags
+
+Sin tags, la nota cae al buzón. Para ponerle uno, escribe `#`: sobre el teclado aparecen los tags del vault, de los que están en más notas a los que menos, filtrados por lo que vas escribiendo (`#ru` → `#Rust`). Tocar uno escribe su forma más usada en el vault, así no nacen variantes (`#rust` y `#Rust` son el mismo tag).
+
+Los tags salen de los `.md` de la carpeta elegida y sus subcarpetas, con las reglas de Metalmind: `#tag` al inicio de línea o tras un espacio (fuera de código y comentarios) y `tags:` del frontmatter. Para que estén todos, elige la raíz del vault. La primera vez se leen todas las notas; después la app guarda lo leído en su caché (nunca en el vault) y solo relee las que cambiaron.
+
 ### Entrar más rápido
 
 - **Compartir con Metalmind**: desde cualquier app, *Compartir* → *Compartir con Metalmind* abre la captura con el texto o el link ya puestos. Con un link de un navegador, el título de la página va en la primera línea (y da el nombre del archivo) y la URL debajo. Al guardar, vuelves a la app de donde compartiste.
