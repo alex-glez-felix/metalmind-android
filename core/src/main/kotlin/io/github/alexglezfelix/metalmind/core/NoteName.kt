@@ -21,11 +21,12 @@ object NoteName {
     private val TIMESTAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd-HHmmss", Locale.ROOT)
 
     /**
-     * El nombre sin extensión: el slug de la primera línea con letras o números
-     * o, si no hay ninguna (solo emoji o puntuación), la fecha y la hora de [now].
+     * El nombre sin extensión: el slug de la primera línea del cuerpo (tras el
+     * frontmatter, si hay) con letras o números o, si no hay ninguna (solo
+     * emoji o puntuación), la fecha y la hora de [now].
      */
     fun stem(text: String, now: LocalDateTime): String =
-        firstSlug(text).ifEmpty { now.format(TIMESTAMP) }
+        firstSlug(text.substring(Frontmatter.bodyStart(text))).ifEmpty { now.format(TIMESTAMP) }
 
     /** `stem.md` en el primer intento; después `stem-2.md`, `stem-3.md`, … */
     fun fileName(stem: String, attempt: Int): String {

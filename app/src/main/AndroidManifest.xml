@@ -11,10 +11,14 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Metalmind">
 
+        <!-- configChanges: Compose se acomoda solo, y sin recrear la actividad
+             un guardado en curso no se corta (girar el teléfono a mitad de
+             guardar dejaba el texto en el campo y guardarlo otra vez lo duplicaba). -->
         <activity
             android:name=".CaptureActivity"
             android:exported="true"
             android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density|fontScale|locale|layoutDirection"
             android:windowSoftInputMode="stateAlwaysVisible|adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

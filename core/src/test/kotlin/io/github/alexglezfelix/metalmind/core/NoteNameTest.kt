@@ -69,6 +69,16 @@ class NoteNameTest {
     }
 
     @Test
+    fun `el nombre sale del cuerpo y no del frontmatter`() {
+        val now = LocalDateTime.of(2026, 10, 18, 9, 5, 7)
+        assertEquals("pan-casero", NoteName.stem("---\ntitle: Receta\n---\nPan casero", now))
+        assertEquals("pan", NoteName.stem("\uFEFF---\r\ntags: [x]\r\n---\r\n\r\nPan\r\n", now))
+        assertEquals("2026-10-18-090507", NoteName.stem("---\ntitle: Solo frontmatter\n---\n", now))
+        // Sin la línea de cierre no es frontmatter.
+        assertEquals("title-receta", NoteName.stem("---\ntitle: Receta\nPan", now))
+    }
+
+    @Test
     fun `los sufijos empiezan en 2`() {
         assertEquals("idea.md", NoteName.fileName("idea", 1))
         assertEquals("idea-2.md", NoteName.fileName("idea", 2))

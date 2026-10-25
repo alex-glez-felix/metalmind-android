@@ -63,8 +63,8 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import io.github.alexglezfelix.metalmind.core.Capture
 import io.github.alexglezfelix.metalmind.core.CaptureResult
-import java.io.IOException
 import java.time.LocalDateTime
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -143,13 +143,16 @@ private fun CaptureScreen(settings: VaultSettings) {
                         is CaptureResult.NameTaken -> Outcome.Failed(nameTakenFormat.format(r.stem))
                         CaptureResult.Empty -> null
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (_: SecurityException) {
                     Outcome.FolderLost
-                } catch (e: IOException) {
-                    Outcome.Failed(writeErrorFormat.format(e.message.orEmpty()))
-                } catch (e: IllegalArgumentException) {
-                    // Así avisa el proveedor de que la carpeta ya no existe.
-                    Outcome.Failed(writeErrorFormat.format(e.message.orEmpty()))
+                } catch (e: Exception) {
+                    // IOException, o lo que el proveedor de la carpeta relance tal
+                    // cual (IllegalArgumentException si ya no existe,
+                    // UnsupportedOperationException si no deja crear, …): nunca
+                    // cerrar la app con el texto sin guardar.
+                    Outcome.Failed(writeErrorFormat.format(e.message ?: e.javaClass.simpleName))
                 }
             }
             saving = false
