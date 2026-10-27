@@ -35,7 +35,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -121,8 +120,11 @@ private fun SearchScreen(tree: Uri, onClose: () -> Unit) {
     val keyboard = LocalSoftwareKeyboardController.current
 
     val current = index
-    val hits by produceState(emptyList<SearchHit>(), field.text, current) {
-        value = if (current == null) emptyList() else withContext(Dispatchers.Default) { current.search(field.text) }
+    // En otro hilo: con miles de notas, cada tecla no frena el teclado.
+    var hits by remember { mutableStateOf(emptyList<SearchHit>()) }
+    val text = field.text
+    LaunchedEffect(text, current) {
+        if (current != null) hits = withContext(Dispatchers.Default) { current.search(text) }
     }
     val tagQuery = if (field.selection.collapsed) TagCompletion.at(field.text, field.selection.end) else null
     val suggestions = remember(tagQuery, current) { tagQuery?.let { current?.suggestions(it.prefix) }.orEmpty() }
