@@ -12,12 +12,34 @@ package io.github.alexglezfelix.metalmind.core
  * entiende; para sugerir tags, sobra.
  */
 object TagScanner {
+    /** Algo tocable en el cuerpo de una nota: de [start] a [end] (sin incluir) en el texto. */
+    sealed interface Markup {
+        val start: Int
+        val end: Int
+    }
+
+    /** Un `#tag` del cuerpo; [name] sin `#`. */
+    data class Tag(override val start: Int, override val end: Int, val name: String) : Markup
+
+    /** Un `[[link]]` (o `![[link]]`); [target] es lo de antes del `|`. */
+    data class Link(override val start: Int, override val end: Int, val target: String) : Markup
+
     /** Cada tag tal como está escrito, sin `#`, una vez por aparición. */
     fun tags(text: String): List<String> {
         val out = mutableListOf<String>()
         val body = frontmatter(text, out)
-        Body(text, body, out).run()
+        Body(text, body, out, null).run()
         return out
+    }
+
+    /**
+     * Los `#tag` y `[[links]]` del cuerpo (no los del frontmatter), en orden,
+     * con las mismas reglas que [tags]: los de código o comentarios no cuentan.
+     */
+    fun markup(text: String): List<Markup> {
+        val spans = mutableListOf<Markup>()
+        Body(text, Frontmatter.bodyStart(text), mutableListOf(), spans).run()
+        return spans
     }
 
     // --- Frontmatter ---
@@ -149,7 +171,12 @@ object TagScanner {
 
     // --- Cuerpo ---
 
-    private class Body(val text: String, val body: Int, val out: MutableList<String>) {
+    private class Body(
+        val text: String,
+        val body: Int,
+        val out: MutableList<String>,
+        val spans: MutableList<Markup>?,
+    ) {
         fun run() {
             var at = body
             while (at < text.length) {
@@ -190,6 +217,7 @@ object TagScanner {
             val name = text.substring(at + 1, end)
             if (!TagName.isValid(name)) return at + 1
             out += name
+            spans?.add(Tag(at, end, name))
             return end
         }
 
@@ -254,7 +282,9 @@ object TagScanner {
             if (i + 1 >= text.length) return null
             val inner = text.substring(body, i)
             val destination = inner.substringBefore('|').removeSuffix("\\")
-            return if (destination.isEmpty()) null else i + 2
+            if (destination.isEmpty()) return null
+            spans?.add(Link(if (text.getOrNull(open - 1) == '!') open - 1 else open, i + 2, destination))
+            return i + 2
         }
 
         /** `[texto](destino "título")`, con los corchetes emparejados en la línea. */

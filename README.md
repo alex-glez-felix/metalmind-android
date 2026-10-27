@@ -1,8 +1,8 @@
 # metalmind-android
 
-App de Android para **capturar notas rápido** en un vault de [Metalmind](https://github.com/alex-glez-felix/metalmind).
+App de Android para **capturar notas rápido** en un vault de [Metalmind](https://github.com/alex-glez-felix/metalmind) y **consultarlas** sin abrir la laptop.
 
-Se abre directo en el campo de texto con el teclado arriba. Escribes, guardas, y queda lista para la siguiente.
+Se abre directo en el campo de texto con el teclado arriba. Escribes, guardas, y queda lista para la siguiente. La lupa busca en el vault y abre las notas para leerlas; editarlas o reorganizarlas se hace en el escritorio.
 
 No sincroniza nada por su cuenta: escribe cada captura como un archivo `.md` **nuevo** en una carpeta del vault, y la sincronización la hace la herramienta que ya uses (Syncthing, git). Como nunca modifica un archivo que ya existe, no hay conflictos. Sin tags, la nota cae al buzón.
 
@@ -26,6 +26,19 @@ Sin cuentas, sin servidores, sin red, sin analítica, sin permisos: la carpeta s
 Sin tags, la nota cae al buzón. Para ponerle uno, escribe `#`: sobre el teclado aparecen los tags del vault, de los que están en más notas a los que menos, filtrados por lo que vas escribiendo (`#ru` → `#Rust`). Tocar uno escribe su forma más usada en el vault, así no nacen variantes (`#rust` y `#Rust` son el mismo tag).
 
 Los tags salen de los `.md` de la carpeta elegida y sus subcarpetas, con las reglas de Metalmind: `#tag` al inicio de línea o tras un espacio (fuera de código y comentarios) y `tags:` del frontmatter. Para que estén todos, elige la raíz del vault. La primera vez se leen todas las notas; después la app guarda lo leído en su caché (nunca en el vault) y solo relee las que cambiaron.
+
+### Buscar
+
+Toca la lupa arriba a la derecha (con teclado físico, `Ctrl+K`). Los resultados salen conforme escribes:
+
+- Cada palabra tiene que estar en el título (el nombre del archivo) o en el texto de la nota, en cualquier orden y sin distinguir mayúsculas ni acentos: `reunion lunes` encuentra *Reunión del lunes*. El frontmatter no se busca.
+- `#tag` deja solo las notas con ese tag, con las mismas reglas que las sugerencias (`#rust` es `#Rust`, en el texto o en `tags:`). Al escribir `#` aparecen los tags del vault, como en la captura. Se combina con palabras: `#rust async`.
+- Primero las notas con lo buscado en el título; después, las más recientes. Sin nada escrito, las últimas que cambiaron.
+- `Enter` abre el primer resultado; `Esc` vuelve.
+
+Se busca en lo que la app ya tiene en su caché (la misma de los tags, que ahora guarda también el texto), así que escribir no relee el vault: al abrir la búsqueda solo se releen las notas que cambiaron.
+
+Tocar un resultado abre la nota **solo para leer**: los encabezados y el código se distinguen, el texto se puede seleccionar y copiar, un `#tag` busca las notas con ese tag y un `[[link]]` abre la nota a la que apunta (por nombre o ruta, sin distinguir mayúsculas). Atrás, o `Esc`, vuelve a la nota anterior y luego a la búsqueda; `Ctrl+K` vuelve directo a la búsqueda.
 
 ### Entrar más rápido
 
@@ -66,7 +79,7 @@ Con git funciona igual: elige la carpeta del clon (por ejemplo, la de Termux o l
 
 ## Desarrollo
 
-- `core/`: Kotlin puro, sin Android. Nombres de archivo, contenido y el "crear sin pisar". Tests JVM: `./gradlew :core:test`.
-- `app/`: la app, Jetpack Compose. Escribe en la carpeta con el Storage Access Framework.
+- `core/`: Kotlin puro, sin Android. Nombres de archivo, contenido y el "crear sin pisar", los tags, el índice del vault (`VaultIndex`) y la búsqueda (`NoteSearch`). Tests JVM: `./gradlew :core:test`.
+- `app/`: la app, Jetpack Compose. Lee y escribe en la carpeta con el Storage Access Framework.
 
 Licencia: GPL-3.0.

@@ -6,9 +6,9 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertSame
 
-class TagIndexTest {
-    private fun index(vararg notes: String): TagIndex =
-        TagIndex.EMPTY.refresh(notes.indices.map { NoteFile("n$it", 1, 1) }) { notes[it.id.drop(1).toInt()] }
+class VaultIndexTest {
+    private fun index(vararg notes: String): VaultIndex =
+        VaultIndex.EMPTY.refresh(notes.indices.map { NoteFile("n$it", 1, 1) }) { notes[it.id.drop(1).toInt()] }
 
     @Test
     fun `de más notas a menos con la forma más usada`() {
@@ -54,7 +54,7 @@ class TagIndexTest {
         val texts = mutableMapOf("a" to "#uno", "b" to "#dos")
         fun reader(file: NoteFile): String? = texts[file.id].also { read += file.id }
 
-        val first = TagIndex.EMPTY.refresh(listOf(NoteFile("a", 1, 4), NoteFile("b", 1, 4)), ::reader)
+        val first = VaultIndex.EMPTY.refresh(listOf(NoteFile("a", 1, 4), NoteFile("b", 1, 4)), ::reader)
         assertEquals(listOf("a", "b"), read)
 
         read.clear()
@@ -74,7 +74,7 @@ class TagIndexTest {
 
     @Test
     fun `lo que no se pudo leer se reintenta`() {
-        val first = TagIndex.EMPTY.refresh(listOf(NoteFile("a", 1, 1))) { null }
+        val first = VaultIndex.EMPTY.refresh(listOf(NoteFile("a", 1, 1))) { null }
         assertEquals(0, first.noteCount)
         val second = first.refresh(listOf(NoteFile("a", 1, 1))) { "#ok" }
         assertEquals(listOf("ok"), second.suggestions("").map { it.name })
@@ -84,7 +84,7 @@ class TagIndexTest {
     fun `la caché guarda y lee el mismo índice`() {
         val index = index("#Rust #año", "#rust", "---\ntags: [2024]\n---\n")
         val bytes = ByteArrayOutputStream().also(index::write).toByteArray()
-        val read = TagIndex.read(ByteArrayInputStream(bytes))
+        val read = VaultIndex.read(ByteArrayInputStream(bytes))
         assertEquals(index.suggestions(""), read.suggestions(""))
         assertEquals(3, read.noteCount)
         // Leída, no relee nada que no haya cambiado.
@@ -93,19 +93,19 @@ class TagIndexTest {
 
     @Test
     fun `una caché rota o de otro formato queda vacía`() {
-        assertEquals(0, TagIndex.read(ByteArrayInputStream(byteArrayOf(0, 0, 0, 1, 0))).noteCount)
+        assertEquals(0, VaultIndex.read(ByteArrayInputStream(byteArrayOf(0, 0, 0, 2, 0))).noteCount)
         // Conteo negativo y conteo enorme.
-        assertEquals(0, TagIndex.read(ByteArrayInputStream(byteArrayOf(0, 0, 0, 1, -1, -1, -1, -1))).noteCount)
-        assertEquals(0, TagIndex.read(ByteArrayInputStream(byteArrayOf(0, 0, 0, 1, 127, -1, -1, -1))).noteCount)
-        assertEquals(0, TagIndex.read(ByteArrayInputStream(byteArrayOf(0, 0, 0, 99))).noteCount)
-        assertEquals(0, TagIndex.read(ByteArrayInputStream(byteArrayOf())).noteCount)
+        assertEquals(0, VaultIndex.read(ByteArrayInputStream(byteArrayOf(0, 0, 0, 2, -1, -1, -1, -1))).noteCount)
+        assertEquals(0, VaultIndex.read(ByteArrayInputStream(byteArrayOf(0, 0, 0, 2, 127, -1, -1, -1))).noteCount)
+        assertEquals(0, VaultIndex.read(ByteArrayInputStream(byteArrayOf(0, 0, 0, 99))).noteCount)
+        assertEquals(0, VaultIndex.read(ByteArrayInputStream(byteArrayOf())).noteCount)
     }
 
     @Test
     fun `miles de notas`() {
         val listing = (0 until 5000).map { NoteFile("n$it", 1, 1) }
         val started = System.nanoTime()
-        val index = TagIndex.EMPTY.refresh(listing) { "# Nota ${it.id}\n#tag${it.id.drop(1).toInt() % 300} #común\ntexto ".repeat(3) }
+        val index = VaultIndex.EMPTY.refresh(listing) { "# Nota ${it.id}\n#tag${it.id.drop(1).toInt() % 300} #común\ntexto ".repeat(3) }
         val suggestions = index.suggestions("tag1")
         val millis = (System.nanoTime() - started) / 1_000_000
         assertEquals(TagSuggestion("común", 5000), index.suggestions("").first())

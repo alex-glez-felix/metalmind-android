@@ -1,7 +1,6 @@
 package io.github.alexglezfelix.metalmind
 
 import android.content.Intent
-import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -9,7 +8,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,10 +18,12 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
@@ -34,10 +34,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -69,7 +65,7 @@ import io.github.alexglezfelix.metalmind.core.Capture
 import io.github.alexglezfelix.metalmind.core.CaptureResult
 import io.github.alexglezfelix.metalmind.core.SharedText
 import io.github.alexglezfelix.metalmind.core.TagCompletion
-import io.github.alexglezfelix.metalmind.core.TagIndex
+import io.github.alexglezfelix.metalmind.core.VaultIndex
 import java.time.LocalDateTime
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -102,19 +98,6 @@ class CaptureActivity : ComponentActivity() {
             text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT),
         )
     }
-}
-
-@Composable
-private fun MetalmindTheme(content: @Composable () -> Unit) {
-    val context = LocalContext.current
-    val dark = isSystemInDarkTheme()
-    val colors = when {
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
-            if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        dark -> darkColorScheme()
-        else -> lightColorScheme()
-    }
-    MaterialTheme(colorScheme = colors, content = content)
 }
 
 /** Lo que pasó al guardar, ya listo para mostrar. */
@@ -154,20 +137,17 @@ private fun CaptureScreen(settings: VaultSettings, initialText: String, onSaved:
     }
 
     // Los tags del vault: primero los de la caché, enseguida; después, al día.
-    var tags by remember(current) { mutableStateOf(TagIndex.EMPTY) }
+    var tags by remember(current) { mutableStateOf(VaultIndex.EMPTY) }
     LaunchedEffect(current) {
-        withContext(Dispatchers.IO) {
-            val vault = VaultTags(context, current)
-            tags = vault.cached()
-            try {
-                tags = vault.refresh(tags)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                // Las sugerencias son opcionales: sin acceso a la carpeta, si ya no
-                // existe o si el proveedor falla, quedan las de la caché, y el
-                // guardado dirá lo que haga falta.
-            }
+        tags = Vaults.cached(context, current)
+        try {
+            tags = Vaults.refresh(context, current)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Las sugerencias son opcionales: sin acceso a la carpeta, si ya no
+            // existe o si el proveedor falla, quedan las de la caché, y el
+            // guardado dirá lo que haga falta.
         }
     }
     val query = if (field.selection.collapsed) TagCompletion.at(text, field.selection.end) else null
@@ -176,6 +156,10 @@ private fun CaptureScreen(settings: VaultSettings, initialText: String, onSaved:
     val savedFormat = stringResource(R.string.saved)
     val writeErrorFormat = stringResource(R.string.error_write)
     val nameTakenFormat = stringResource(R.string.error_name_taken)
+
+    fun search() {
+        context.startActivity(Intent(context, SearchActivity::class.java))
+    }
 
     fun save() {
         if (saving || text.isBlank()) return
@@ -231,6 +215,9 @@ private fun CaptureScreen(settings: VaultSettings, initialText: String, onSaved:
             TopAppBar(
                 title = { Text(SafNoteFolder.label(current), maxLines = 1) },
                 actions = {
+                    IconButton(onClick = ::search) {
+                        Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.search))
+                    }
                     TextButton(onClick = { picker.launch(current) }) {
                         Text(stringResource(R.string.change_folder))
                     }
@@ -258,6 +245,7 @@ private fun CaptureScreen(settings: VaultSettings, initialText: String, onSaved:
             value = field,
             onValueChange = { field = it },
             onSave = ::save,
+            onSearch = ::search,
             modifier = Modifier.padding(padding).fillMaxSize(),
         )
     }
@@ -268,6 +256,7 @@ private fun CaptureField(
     value: TextFieldValue,
     onValueChange: (TextFieldValue) -> Unit,
     onSave: () -> Unit,
+    onSearch: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val focus = remember { FocusRequester() }
@@ -281,6 +270,7 @@ private fun CaptureField(
         onValueChange = onValueChange,
         placeholder = { Text(stringResource(R.string.placeholder)) },
         // La tecla de acción del teclado guarda; con teclado físico, Ctrl+Enter.
+        // Ctrl+K abre la búsqueda.
         keyboardOptions = KeyboardOptions(
             capitalization = KeyboardCapitalization.Sentences,
             imeAction = ImeAction.Send,
@@ -295,12 +285,13 @@ private fun CaptureField(
         modifier = modifier
             .focusRequester(focus)
             .onPreviewKeyEvent {
-                if (it.type == KeyEventType.KeyDown && it.key == Key.Enter && it.isCtrlPressed) {
-                    onSave()
-                    true
-                } else {
-                    false
+                if (it.type != KeyEventType.KeyDown || !it.isCtrlPressed) return@onPreviewKeyEvent false
+                when (it.key) {
+                    Key.Enter -> onSave()
+                    Key.K -> onSearch()
+                    else -> return@onPreviewKeyEvent false
                 }
+                true
             },
     )
 }
