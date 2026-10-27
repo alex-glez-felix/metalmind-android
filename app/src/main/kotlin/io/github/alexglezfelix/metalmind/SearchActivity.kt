@@ -122,7 +122,7 @@ private fun SearchScreen(tree: Uri, onClose: () -> Unit) {
 
     val current = index
     val hits by produceState(emptyList<SearchHit>(), field.text, current) {
-        if (current != null) value = withContext(Dispatchers.Default) { current.search(field.text) }
+        value = if (current == null) emptyList() else withContext(Dispatchers.Default) { current.search(field.text) }
     }
     val tagQuery = if (field.selection.collapsed) TagCompletion.at(field.text, field.selection.end) else null
     val suggestions = remember(tagQuery, current) { tagQuery?.let { current?.suggestions(it.prefix) }.orEmpty() }
