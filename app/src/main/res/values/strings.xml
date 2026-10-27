@@ -14,4 +14,14 @@
     <string name="tile_label">Nota rápida</string>
     <string name="widget_label">Nota rápida</string>
     <string name="widget_description">Escribe una nota nueva en tu vault</string>
+    <string name="search">Buscar</string>
+    <string name="search_placeholder">Buscar en el vault</string>
+    <string name="search_reading">Leyendo el vault…</string>
+    <string name="search_no_notes">No hay notas .md en esta carpeta.</string>
+    <string name="search_read_failed">No se pudo leer la carpeta.</string>
+    <string name="search_no_results">Ninguna nota coincide.</string>
+    <string name="back">Volver</string>
+    <string name="clear">Borrar</string>
+    <string name="note_gone">Esta nota ya no está en el vault.</string>
+    <string name="link_missing">No hay ninguna nota «%1$s».</string>
 </resources>

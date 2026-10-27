@@ -122,4 +122,18 @@ class TagScannerTest {
     fun `otras claves no son tags`() {
         assertEquals(emptyList(), tags("---\naliases: [rust]\nmytags: [x]\n  tags: [y]\n---\n"))
     }
+
+    @Test
+    fun `markup da dónde están los tags y los links del cuerpo`() {
+        val text = "---\ntags: [fm]\n---\n#uno y [[otra nota|alias]] `#no` ![[img.png]] %% [[no]] %%"
+        fun at(s: String) = text.indexOf(s).let { it until it + s.length }
+        assertEquals(
+            listOf(
+                TagScanner.Tag(at("#uno").first, at("#uno").last + 1, "uno"),
+                TagScanner.Link(at("[[otra nota|alias]]").first, at("[[otra nota|alias]]").last + 1, "otra nota"),
+                TagScanner.Link(at("![[img.png]]").first, at("![[img.png]]").last + 1, "img.png"),
+            ),
+            TagScanner.markup(text),
+        )
+    }
 }

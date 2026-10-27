@@ -30,6 +30,13 @@
             </intent-filter>
         </activity>
 
+        <!-- Solo se abre desde la captura. -->
+        <activity
+            android:name=".SearchActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density|fontScale|locale|layoutDirection"
+            android:windowSoftInputMode="stateAlwaysVisible|adjustResize" />
+
         <service
             android:name=".CaptureTileService"
             android:exported="true"

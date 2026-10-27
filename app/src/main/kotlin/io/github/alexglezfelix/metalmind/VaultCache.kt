@@ -5,38 +5,41 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import android.provider.DocumentsContract.Document
 import io.github.alexglezfelix.metalmind.core.NoteFile
-import io.github.alexglezfelix.metalmind.core.TagIndex
+import io.github.alexglezfelix.metalmind.core.VaultIndex
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
 import java.security.MessageDigest
 
 /**
- * Los tags de los `.md` de la carpeta elegida (y sus subcarpetas), para el
- * autocompletado. El índice se guarda en la caché de la app, nunca en el
- * vault: al abrir se lee de ahí y después solo se releen las notas que
- * cambiaron.
+ * Lo leído de los `.md` de la carpeta elegida (y sus subcarpetas): los tags
+ * para el autocompletado y el texto para la búsqueda. El índice se guarda en
+ * la caché de la app, nunca en el vault: al abrir se lee de ahí y después
+ * solo se releen las notas que cambiaron.
  */
-class VaultTags(context: Context, private val tree: Uri) {
+class VaultCache(context: Context, private val tree: Uri) {
     private val resolver = context.contentResolver
-    private val cache = File(context.cacheDir, "tags-${hash(tree.toString())}.bin")
+    private val cache = File(context.cacheDir, "vault-${hash(tree.toString())}.bin")
 
     /** El índice de la última vez; vacío si no hay o está roto. */
-    fun cached(): TagIndex =
-        try {
-            cache.inputStream().use(TagIndex::read)
+    fun cached(): VaultIndex {
+        // La de antes de la búsqueda, solo con tags: la reemplaza esta.
+        cache.resolveSibling(cache.name.replaceFirst("vault-", "tags-")).delete()
+        return try {
+            cache.inputStream().use(VaultIndex::read)
         } catch (_: IOException) {
-            TagIndex.EMPTY
+            VaultIndex.EMPTY
         }
+    }
 
     /** [index] al día con el vault, y guardado si cambió. */
-    fun refresh(index: TagIndex): TagIndex {
+    fun refresh(index: VaultIndex): VaultIndex {
         val next = index.refresh(listNotes(), ::read)
         if (next !== index) save(next)
         return next
     }
 
-    private fun save(index: TagIndex) {
+    private fun save(index: VaultIndex) {
         // Entero o nada: otra captura abierta (la de compartir) puede estar leyéndolo.
         val tmp = File.createTempFile("tags", ".tmp", cache.parentFile)
         try {
@@ -50,8 +53,9 @@ class VaultTags(context: Context, private val tree: Uri) {
     /** Los `.md` de la carpeta y sus subcarpetas, sin las ocultas (`.git`, `.stversions`, …). */
     private fun listNotes(): List<NoteFile> {
         val notes = mutableListOf<NoteFile>()
-        val pending = ArrayDeque<String>()
-        pending += DocumentsContract.getTreeDocumentId(tree)
+        // Cada carpeta pendiente con su ruta dentro de la elegida (`proyectos/`).
+        val pending = ArrayDeque<Pair<String, String>>()
+        pending += DocumentsContract.getTreeDocumentId(tree) to ""
         val columns = arrayOf(
             Document.COLUMN_DOCUMENT_ID,
             Document.COLUMN_DISPLAY_NAME,
@@ -60,16 +64,17 @@ class VaultTags(context: Context, private val tree: Uri) {
             Document.COLUMN_SIZE,
         )
         while (pending.isNotEmpty()) {
-            val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, pending.removeFirst())
+            val (folder, prefix) = pending.removeFirst()
+            val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, folder)
             resolver.query(children, columns, null, null, null)?.use { c ->
                 while (c.moveToNext()) {
                     val id = c.getString(0)
                     val name = c.getString(1) ?: continue
                     if (name.startsWith('.')) continue
                     when {
-                        c.getString(2) == Document.MIME_TYPE_DIR -> pending += id
+                        c.getString(2) == Document.MIME_TYPE_DIR -> pending += id to "$prefix$name/"
                         name.endsWith(".md", ignoreCase = true) ->
-                            notes += NoteFile(id, c.getLong(3), c.getLong(4))
+                            notes += NoteFile(id, c.getLong(3), c.getLong(4), "$prefix$name")
                     }
                 }
             }
@@ -82,7 +87,7 @@ class VaultTags(context: Context, private val tree: Uri) {
         return try {
             resolver.openInputStream(uri)?.use { input ->
                 // Hasta el límite aunque el proveedor no sepa el tamaño: un
-                // "markdown" enorme no es una nota, se cuenta sin tags.
+                // "markdown" enorme no es una nota, se cuenta vacía.
                 val bytes = ByteArrayOutputStream()
                 val buffer = ByteArray(16 * 1024)
                 while (bytes.size() <= MAX_NOTE_BYTES) {
