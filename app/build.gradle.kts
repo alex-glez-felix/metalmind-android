@@ -8,6 +8,7 @@ android {
     namespace = "io.github.alexglezfelix.metalmind"
     compileSdk = 35
     buildToolsVersion = "35.0.0"
+    ndkVersion = "27.3.13750724"
 
     defaultConfig {
         applicationId = "io.github.alexglezfelix.metalmind"
@@ -15,6 +16,26 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Las notas de voz usan whisper.cpp (código nativo). arm64 son los
+        // teléfonos y tablets de hoy; x86_64, el emulador.
+        ndk {
+            abiFilters += listOf("arm64-v8a", "x86_64")
+        }
+        externalNativeBuild {
+            cmake {
+                // whisper, ggml y sus variantes de CPU son varias .so con C++.
+                arguments += listOf("-DANDROID_STL=c++_shared")
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.31.6"
+        }
     }
 
     buildTypes {
@@ -51,6 +72,11 @@ android {
 
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        // ggml elige su variante de CPU listando la carpeta de bibliotecas
+        // nativas: tienen que quedar extraídas, no dentro del APK.
+        jniLibs.useLegacyPackaging = true
+        // whisper.cpp compila también Parakeet, que la app no usa.
+        jniLibs.excludes += "**/libparakeet.so"
     }
 }
 
@@ -71,4 +97,8 @@ dependencies {
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly(libs.junit.platform.launcher)
+
+    // La prueba de whisper en un emulador o teléfono; CI no la corre (ver README).
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.ext.junit)
 }

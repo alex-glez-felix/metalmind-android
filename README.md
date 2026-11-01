@@ -6,7 +6,7 @@ Se abre directo en el campo de texto con el teclado arriba. Escribes, guardas, y
 
 No sincroniza nada por su cuenta: escribe cada captura como un archivo `.md` **nuevo** en una carpeta del vault, y la sincronización la hace la herramienta que ya uses (Syncthing, git). Como nunca modifica un archivo que ya existe, no hay conflictos. Sin tags, la nota cae al buzón.
 
-Sin cuentas, sin servidores, sin red, sin analítica, sin permisos: la carpeta se abre con el selector del sistema.
+Sin cuentas, sin servidores, sin red, sin analítica: la carpeta se abre con el selector del sistema. El único permiso es el micrófono, para las notas de voz, y se pide al tocarlo.
 
 ## Cómo se guardan las notas
 
@@ -84,11 +84,31 @@ Con teclado físico, en la captura con dos paneles (en un panel, `Ctrl+K`, `Ente
 | `Ctrl+N` | Nota nueva: cierra la nota abierta y va a la captura |
 | `Ctrl+Enter` | Guardar la captura |
 
+### Notas de voz
+
+El micrófono de arriba graba y pasa la voz a texto **en el teléfono, sin red** y sin Google Play Services, con [whisper.cpp](https://github.com/ggml-org/whisper.cpp). El texto queda en el campo, donde está el cursor, para revisarlo antes de guardar; el nombre sale de la primera línea, como en cualquier captura.
+
+- **Grabar**: pausa, sigue y *Transcribir* (o *Descartar*). Hasta 10 minutos. La pantalla queda encendida mientras graba o transcribe; salir de la app corta la grabación.
+- **Idioma**: español, con las palabras en inglés tal como se dicen ("revisar el pull request").
+- **Audio**: con *Guardar también el audio con la nota*, el audio (m4a, unos 240 KB por minuto) va a `adjuntos/` dentro de la carpeta elegida y la nota lo enlaza con `![[2026-11-01-093005.m4a]]`. Apagado de entrada. Si borras el enlace antes de guardar, el audio no se guarda.
+- **Atajo**: mantén pulsado el ícono de la app → *Nota de voz* abre la captura grabando.
+
+**El modelo** se baja una vez. La app no tiene permiso de red: *Descargar* lo abre en el navegador y *Elegir archivo* lo copia a la app (nunca al vault) y comprueba su SHA-256; después puedes borrar la descarga. Un archivo incompleto o dañado se rechaza.
+
+| Modelo | Tamaño | Español (WER en FLEURS) | Para |
+|---|---|---|---|
+| `small` (q5_1) | 190 MB | 5.6 % | Recomendado |
+| `base` (q5_1) | 60 MB | 9.9 % | Teléfonos más lentos, o si `small` tarda demasiado |
+| `large-v3-turbo` (q5_0) | 574 MB | — (large-v2: 3.0 %) | Quien no tenga prisa |
+
+El WER es el del artículo de Whisper para el modelo sin cuantizar (tabla D.2.4); `q5` ocupa un tercio y pierde poco. También sirve cualquier otro modelo `ggml-*.bin` de whisper.cpp: se usa tal cual, sin comprobar.
+
 ### Entrar más rápido
 
 - **Compartir con Metalmind**: desde cualquier app, *Compartir* → *Compartir con Metalmind* abre la captura con el texto o el link ya puestos. Con un link de un navegador, el título de la página va en la primera línea (y da el nombre del archivo) y la URL debajo. Al guardar, vuelves a la app de donde compartiste.
 - **Tile de Ajustes rápidos**: edita los Ajustes rápidos (el lápiz del panel de notificaciones) y arrastra *Nota rápida*. Con el teléfono bloqueado, primero pide desbloquear.
 - **Widget**: mantén pulsada la pantalla de inicio → *Widgets* → *Metalmind* → *Nota rápida*. Es una barra que abre la captura.
+- **Nota de voz**: mantén pulsado el ícono de la app → *Nota de voz*.
 
 ## Instalar el APK
 
@@ -123,7 +143,23 @@ Con git funciona igual: elige la carpeta del clon (por ejemplo, la de Termux o l
 
 ## Desarrollo
 
-- `core/`: Kotlin puro, sin Android. Nombres de archivo, contenido y el "crear sin pisar", los tags, los links (`LinkCompletion`), el formato (`Formatting`), el índice del vault (`VaultIndex`), la búsqueda (`NoteSearch`) y el markdown de la vista de nota (`NoteMarkdown`). Tests JVM: `./gradlew :core:test`.
+- `core/`: Kotlin puro, sin Android. Nombres de archivo, contenido y el "crear sin pisar", los tags, los links (`LinkCompletion`), el formato (`Formatting`), el índice del vault (`VaultIndex`), la búsqueda (`NoteSearch`), el markdown de la vista de nota (`NoteMarkdown`) y las notas de voz (`VoiceSession`, `VoiceRecorder`, `Transcript`, `AudioAttachment`, la lista de modelos en `VoiceModels`). Tests JVM: `./gradlew :core:test`.
 - `app/`: la app, Jetpack Compose. Lee y escribe en la carpeta con el Storage Access Framework. Cuándo hay dos paneles y cómo se mueven las flechas por la lista están en `Panes`, con tests JVM: `./gradlew :app:testDebugUnitTest`.
 
-Licencia: GPL-3.0.
+- `app/src/main/cpp/`: el puente JNI con whisper.cpp. CMake baja la versión fijada (con su SHA-256) y compila ggml con una variante por cada familia de CPU ARM (dotprod, fp16, i8mm, SVE…); al arrancar se carga la mejor que tenga el teléfono. Hace falta el NDK (`ndk;27.3.13750724`) y CMake 3.31.6 del SDK; Gradle los instala si faltan y aceptaste las licencias. Solo `arm64-v8a` (teléfonos) y `x86_64` (emulador).
+
+### Probar la transcripción en el dispositivo
+
+CI no corre whisper (necesita un modelo de cientos de MB). En un emulador o un teléfono por USB:
+
+```sh
+D=/sdcard/Android/data/io.github.alexglezfelix.metalmind/files
+adb push ggml-small-q5_1.bin $D/modelo.bin
+adb push voz.wav $D/voz.wav   # 16 kHz, mono, 16 bits, con el texto de WhisperDeviceTest
+./gradlew connectedDebugAndroidTest
+adb logcat -s WhisperDeviceTest   # el texto, el tiempo y cuántas palabras acertó
+```
+
+Sin esos archivos, `WhisperDeviceTest` se salta. `VoiceAttachmentsDeviceTest` comprueba el m4a y, si la app ya tiene carpeta elegida, que el audio llegue a `adjuntos/`. El micrófono del emulador no recibe audio del anfitrión con PipeWire, por eso la prueba usa un WAV en lugar del micrófono; lo demás (VoiceSession, JNI, whisper) es lo mismo que en la app.
+
+Licencia: GPL-3.0. whisper.cpp y ggml son MIT; los modelos de Whisper, MIT (OpenAI).
