@@ -10,7 +10,9 @@ class LinkCompletionTest {
         assertEquals(LinkQuery(4, 8, "ru"), LinkCompletion.at("ver [[ru", 8))
         assertEquals(LinkQuery(0, 2, ""), LinkCompletion.at("[[", 2))
         assertEquals(LinkQuery(0, 13, "proyectos/r"), LinkCompletion.at("[[proyectos/rust y", 13))
-        assertEquals(LinkQuery(2, 17, "reunión "), LinkCompletion.at("a [[reunión del]] b", 12))
+        assertEquals(LinkQuery(2, 17, "reunión d"), LinkCompletion.at("a [[reunión del]] b", 13))
+        // Un `]]` lejano, tras un espacio, no es el cierre de este link.
+        assertEquals(LinkQuery(4, 6, ""), LinkCompletion.at("ver [[ y luego algo]]", 6))
     }
 
     @Test

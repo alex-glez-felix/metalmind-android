@@ -54,10 +54,20 @@ class VaultIndex private constructor(private val files: Map<String, Entry>) {
 
     /** Una nota como destino de link: su ruta sin `.md` tal cual y en [linkKey], y su título plegado. */
     private class LinkName(val modified: Long, val path: String, val key: String) {
-        val title = NoteSearch.title(path)
+        val title = path.substringAfterLast('/')
         val folded = NoteSearch.fold(title)
         val foldedPath = NoteSearch.fold(path)
         val depth = path.count { it == '/' }
+
+        /** El destino, calculado la primera vez que se sugiere. */
+        var target: String? = null
+
+        /**
+         * Si `[[ruta]]` llega a esta nota: sin `[`, `]`, `|`, `#` ni `^` (que
+         * cortan el link o el destino), sin espacios en los bordes (se
+         * recortan) y sin otro `.md` al final (se quitaría al resolver).
+         */
+        val writable = path.none { it in "[]|#^" } && path == path.trim() && !path.endsWith(".md", ignoreCase = true)
     }
 
     val noteCount: Int get() = files.size
@@ -108,6 +118,7 @@ class VaultIndex private constructor(private val files: Map<String, Entry>) {
     private val linkNames: List<LinkName> by lazy {
         files.values
             .map { val path = TagName.nfc(stripMd(it.path)); LinkName(it.modified, path, linkKey(path)) }
+            .filter { it.writable }
             .sortedWith(compareByDescending<LinkName> { it.modified }.thenBy { it.path })
     }
 
@@ -120,19 +131,27 @@ class VaultIndex private constructor(private val files: Map<String, Entry>) {
      * Las notas para un `[[link]]` que sigue con [prefix] (lo escrito tras el
      * `[[`), sin distinguir mayúsculas ni acentos: primero las que empiezan
      * así, después las que lo tienen en el nombre y al final en la ruta
-     * (`proy/ru` encuentra `proyectos/rust`); en cada grupo, la más reciente
-     * primero. Vacío, las últimas que cambiaron. Las notas cuyo nombre no cabe
-     * en un `[[link]]` (con `[`, `]`, `|` o `#`) no salen.
+     * (`proyectos/ru` encuentra `proyectos/rust`); en cada grupo, la más
+     * reciente primero. Vacío, las últimas que cambiaron. Las notas que un
+     * `[[link]]` no puede nombrar (ver [LinkName.writable]) no salen.
      */
     fun linkSuggestions(prefix: String, limit: Int = 20): List<LinkSuggestion> {
         val wanted = NoteSearch.fold(TagName.nfc(prefix.trim()))
-        val writable = linkNames.asSequence().filter { note -> note.path.none { it in "[]|#" } }
-        val starts = writable.filter { it.folded.startsWith(wanted) }
-        val inTitle = writable.filter { !it.folded.startsWith(wanted) && wanted in it.folded }
-        val inPath = writable.filter { wanted !in it.folded && wanted in it.foldedPath }
+        val starts = ArrayList<LinkName>()
+        val inTitle = ArrayList<LinkName>()
+        val inPath = ArrayList<LinkName>()
+        // Una sola pasada, que para en cuanto hay [limit] que empiezan así.
+        for (note in linkNames) {
+            when {
+                note.folded.startsWith(wanted) -> starts += note
+                wanted in note.folded -> inTitle += note
+                wanted in note.foldedPath -> inPath += note
+            }
+            if (starts.size >= limit) break
+        }
         return (starts + inTitle + inPath).take(limit).map { note ->
-            LinkSuggestion(note.title, note.path.substringBeforeLast('/', ""), target(note))
-        }.toList()
+            LinkSuggestion(note.title, note.path.substringBeforeLast('/', ""), note.target ?: target(note).also { note.target = it })
+        }
     }
 
     /**

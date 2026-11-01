@@ -139,4 +139,50 @@ class FormattingTest {
         assertNull(Formatting.typedNewline("- pan", 5, 5, "- pa\n", 5))
         assertNull(Formatting.typedNewline("- pan", 5, 5, "- pan", 5))
     }
+
+    @Test
+    fun `quitar marcas por dentro no empareja dos spans distintos`() {
+        assertEquals("«a y b»", inline("«**a** y **b**»", Inline.BOLD))
+        assertEquals("«a y b»", inline("«*a* y *b*»", Inline.ITALIC))
+        assertEquals("«a y b»", inline("«`a` y `b`»", Inline.CODE))
+        // Las de fuera tienen que ser un par: aquí son el cierre de una y la apertura de otra.
+        assertEquals("*a**«x»**b*", inline("*a*«x»*b*", Inline.ITALIC))
+    }
+
+    @Test
+    fun `sin selección, una marca que abre otro span no se salta`() {
+        assertEquals("**|****foo**", inline("|**foo**", Inline.BOLD))
+        assertEquals("x `|``y`", inline("x |`y`", Inline.CODE))
+        assertEquals("**a** **|**", inline("**a** |", Inline.BOLD))
+    }
+
+    @Test
+    fun `el bloque de código se quita repitiendo`() {
+        val once = Formatting.inline("a\nb", 0, 3, Inline.CODE)
+        assertEquals(Formatted("```\na\nb\n```", 4, 7), once)
+        assertEquals(Formatted("a\nb", 0, 3), Formatting.inline(once.text, once.start, once.end, Inline.CODE))
+        assertEquals("x\n«a\nb»\ny", inline("x\n«```kotlin\na\nb\n```»\ny", Inline.CODE))
+    }
+
+    @Test
+    fun `tocar otra vez en el elemento nuevo lo borra`() {
+        assertEquals("- a\n- |", block("- a|", Block.LIST))
+        assertEquals("- a|", block("- a\n- |", Block.LIST))
+        assertEquals("- [ ] a|", block("- [ ] a\n- [ ] |", Block.CHECKBOX))
+        // Sin un elemento antes, solo se quita la marca.
+        assertEquals("a\n|", block("a\n- |", Block.LIST))
+    }
+
+    @Test
+    fun `la viñeta se conserva y una línea horizontal no es lista`() {
+        assertEquals("* a\n* |", newline("* a\n|"))
+        assertEquals("+ [ ] a\n+ [ ] |", block("+ [ ] a|", Block.CHECKBOX))
+        assertNull(parse("* * *\n|").let { Formatting.newline(it.text, it.start) })
+        assertEquals("- * * *|", block("* * *|", Block.LIST))
+    }
+
+    @Test
+    fun `fin de línea CRLF`() {
+        assertEquals("- a\r\n|", newline("- a\r\n- \r\n|"))
+    }
 }

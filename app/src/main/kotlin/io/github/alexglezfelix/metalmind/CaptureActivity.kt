@@ -153,6 +153,8 @@ private fun CaptureScreen(settings: VaultSettings, initialText: String, onSaved:
     val suggestions = remember(query, tags) { query?.let { tags.suggestions(it.prefix) }.orEmpty() }
     val linkQuery = if (field.selection.collapsed) LinkCompletion.at(text, field.selection.end) else null
     val links = remember(linkQuery, tags) { linkQuery?.let { tags.linkSuggestions(it.prefix) }.orEmpty() }
+    // Preparar las notas para `[[` fuera del hilo principal, antes de que se escriba.
+    LaunchedEffect(tags) { withContext(Dispatchers.Default) { tags.linkSuggestions("", 1) } }
 
     val savedFormat = stringResource(R.string.saved)
     val writeErrorFormat = stringResource(R.string.error_write)

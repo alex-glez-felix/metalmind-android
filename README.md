@@ -37,8 +37,8 @@ Tocar una escribe `[[nombre]]` como lo escribe Metalmind: solo el nombre si bast
 
 Sobre el teclado hay una barra con negrita, cursiva, lista, checkbox y código. Escribe markdown plano (`**negrita**`, `*cursiva*`, `- `, `- [ ] `, `` `código` ``), así que la nota queda igual en el escritorio:
 
-- **Negrita, cursiva y código** envuelven lo seleccionado; con varias líneas, el código va en un bloque ```` ``` ````. Sin selección escriben el par de marcas con el cursor en medio, y al tocar otra vez el cursor sale del par para seguir escribiendo sin formato. Sobre algo que ya tiene ese formato, lo quitan.
-- **Lista y checkbox** se ponen al inicio del renglón (o de todos los seleccionados), y tocar otra vez los quita. Una lista pasa a checkbox y al revés. Con el cursor al final de un elemento, empiezan otro debajo: la tecla de acción del teclado guarda, y así se escribe una lista en el teléfono.
+- **Negrita, cursiva y código** envuelven lo seleccionado; con varias líneas, el código va en un bloque ```` ``` ````. Si lo seleccionado ya tiene ese formato (o una parte), lo quitan. Sin selección escriben el par de marcas con el cursor en medio, y al tocar otra vez el cursor sale del par para seguir escribiendo sin formato.
+- **Lista y checkbox** se ponen al inicio del renglón (o de todos los seleccionados), y tocar otra vez los quita. Una lista pasa a checkbox y al revés. Con el cursor al final de un elemento, empiezan otro debajo (la tecla de acción del teclado guarda, y así se escribe una lista en el teléfono); tocar otra vez en ese elemento vacío lo borra. Para quitarle la marca a un elemento con texto, pon el cursor dentro del renglón.
 - Con teclado físico, `Enter` tras un elemento empieza otro igual, y `Enter` en uno vacío termina la lista.
 
 | Atajo | Formato |

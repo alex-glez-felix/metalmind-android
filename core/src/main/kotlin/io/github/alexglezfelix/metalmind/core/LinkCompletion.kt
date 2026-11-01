@@ -2,8 +2,8 @@ package io.github.alexglezfelix.metalmind.core
 
 /**
  * El `[[link]]` que se está escribiendo: de `[[` (en [start]) a [end], y lo
- * que va tras el `[[` hasta el cursor. Si ya está cerrado, [end] va tras el
- * `]]`; si no, es el cursor.
+ * que va tras el `[[` hasta el cursor. Si el `]]` sigue al cursor sin
+ * espacios de por medio, [end] va tras él; si no, es el cursor.
  */
 data class LinkQuery(val start: Int, val end: Int, val prefix: String)
 
@@ -20,9 +20,10 @@ object LinkCompletion {
         if (start < 2 || text[start - 1] != '[' || text[start - 2] != '[') return null
         // `[[[x`: el tercer `[` no abre otro link.
         if (start > 2 && text[start - 3] == '[') return null
-        // Si el link ya está cerrado, se reemplaza entero; si no, lo que sigue al cursor se queda.
+        // Si el link ya está cerrado justo después (`[[ru|]]`, `[[ru|st]]`), se
+        // reemplaza entero; si no, lo que sigue al cursor se queda.
         var close = cursor
-        while (close < text.length && isTargetChar(text[close])) close++
+        while (close < text.length && isTargetChar(text[close]) && !text[close].isWhitespace()) close++
         val end = if (text.startsWith("]]", close)) close + 2 else cursor
         return LinkQuery(start - 2, end, text.substring(start, cursor))
     }

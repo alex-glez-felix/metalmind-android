@@ -14,20 +14,24 @@ object Formatting {
     enum class Block(val marker: String) { LIST("- "), CHECKBOX("- [ ] ") }
 
     /**
-     * Pone o quita [style] en la selección (sin los espacios de los bordes). Sin
-     * selección, escribe el par de marcas con el cursor en medio; si el cursor
-     * ya está justo antes de la marca que cierra, la salta, así se sigue
-     * escribiendo sin formato; entre un par vacío, lo quita.
+     * Pone o quita [style] en la selección (sin los espacios de los bordes): si
+     * ya lo tiene (las marcas por fuera, o alguna por dentro), lo quita de toda
+     * la selección; si no, la envuelve. Código de varias líneas va en un bloque
+     * ```` ``` ````, que se quita igual. Sin selección, escribe el par de marcas
+     * con el cursor en medio; dentro de uno que sigue abierto en el renglón, el
+     * cursor salta la marca que lo cierra, así se sigue escribiendo sin formato;
+     * entre un par vacío, lo quita.
      */
     fun inline(text: String, start: Int, end: Int, style: Inline): Formatted {
         val marker = style.marker
         if (start == end) {
             val before = run(text, start, style, backwards = true)
             val after = run(text, start, style, backwards = false)
+            val open = insideSpan(text, start, style)
             return when {
-                closes(style, before) && closes(style, after) ->
+                open && closes(style, before) && closes(style, after) ->
                     Formatted(text.removeRange(start, start + marker.length).removeRange(start - marker.length, start), start - marker.length, start - marker.length)
-                closes(style, after) -> Formatted(text, start + marker.length, start + marker.length)
+                open && closes(style, after) -> Formatted(text, start + marker.length, start + marker.length)
                 else -> Formatted(text.substring(0, start) + marker + marker + text.substring(start), start + marker.length, start + marker.length)
             }
         }
@@ -36,20 +40,19 @@ object Formatting {
         while (s < e && text[s].isWhitespace()) s++
         while (e > s && text[e - 1].isWhitespace()) e--
         if (s == e) return Formatted(text, start, end)
-        // Las marcas fuera de la selección: `**|texto|**`.
-        if (closes(style, run(text, s, style, backwards = true)) && closes(style, run(text, e, style, backwards = false))) {
+        if (style == Inline.CODE) unfence(text, s, e)?.let { return it }
+        // Las marcas fuera de la selección, `**|texto|**`, si son un par que abre y cierra.
+        val before = run(text, s, style, backwards = true)
+        if (closes(style, before) && closes(style, run(text, e, style, backwards = false)) &&
+            !insideSpan(text, s - before, style)
+        ) {
             val out = text.substring(0, s - marker.length) + text.substring(s, e) + text.substring(e + marker.length)
             return Formatted(out, s - marker.length, e - marker.length)
         }
-        // Las marcas dentro de la selección: `|**texto**|`.
+        // Marcas dentro de la selección (`|**texto**|`, `|**a** y **b**|`): se quitan todas.
         val inner = text.substring(s, e)
-        if (inner.length >= 2 * marker.length + 1 &&
-            closes(style, run(inner, 0, style, backwards = false)) &&
-            closes(style, run(inner, inner.length, style, backwards = true))
-        ) {
-            val out = text.substring(0, s) + inner.substring(marker.length, inner.length - marker.length) + text.substring(e)
-            return Formatted(out, s, e - 2 * marker.length)
-        }
+        val stripped = strip(inner, style)
+        if (stripped != inner) return Formatted(text.substring(0, s) + stripped + text.substring(e), s, s + stripped.length)
         if (style == Inline.CODE && '\n' in inner) return fence(text, s, e)
         val out = text.substring(0, s) + marker + inner + marker + text.substring(e)
         return Formatted(out, s + marker.length, e + marker.length)
@@ -61,6 +64,7 @@ object Formatting {
      * lista pasa a checkbox o al revés sin duplicar el guion. Con el cursor al
      * final de un elemento que ya lo tiene, empieza otro debajo: en el
      * teléfono la tecla de acción guarda, y así se escribe una lista sin Enter.
+     * Tocar otra vez en ese elemento nuevo, vacío, lo borra con su salto.
      */
     fun block(text: String, start: Int, end: Int, block: Block): Formatted {
         val first = lineStart(text, start)
@@ -72,9 +76,15 @@ object Formatting {
 
         if (start == end && lines.size == 1) {
             val line = lines[0]
-            if (line.kind == block && end == line.end && line.end > line.contentStart) {
-                val item = "\n" + line.indent + block.marker
-                return Formatted(text.substring(0, end) + item + text.substring(end), end + item.length, end + item.length)
+            if (line.kind == block && end == line.end) {
+                if (line.end > line.contentStart) {
+                    val item = "\n" + line.indent + line.next()
+                    return Formatted(text.substring(0, end) + item + text.substring(end), end + item.length, end + item.length)
+                }
+                if (line.start > 0 && Line.parse(text, lineStart(text, line.start - 1)).kind != null) {
+                    val out = text.substring(0, line.start - 1) + text.substring(line.end)
+                    return Formatted(out, line.start - 1, line.start - 1)
+                }
             }
         }
 
@@ -94,7 +104,7 @@ object Formatting {
     /**
      * Lo que hace Enter en una lista (con teclado físico): si [cursor] quedó
      * justo tras un salto de línea que sigue a un elemento, el nuevo renglón
-     * empieza con la misma marca (un checkbox, sin marcar); si el elemento
+     * empieza con la misma marca (`-`, `*` o `+`; un checkbox, sin marcar); si el elemento
      * estaba vacío (y no queda nada tras el cursor), se quita su marca y el
      * salto, y la lista termina ahí.
      * `null` si no hay nada que hacer.
@@ -102,12 +112,12 @@ object Formatting {
     fun newline(text: String, cursor: Int): Formatted? {
         if (cursor < 1 || cursor > text.length || text[cursor - 1] != '\n') return null
         val previous = Line.parse(text, lineStart(text, cursor - 1))
-        val kind = previous.kind ?: return null
+        previous.kind ?: return null
         if (previous.contentStart == previous.end && lineEnd(text, cursor) == cursor) {
             val out = text.substring(0, previous.start) + text.substring(cursor)
             return Formatted(out, previous.start, previous.start)
         }
-        val item = previous.indent + kind.marker
+        val item = previous.indent + previous.next()
         return Formatted(text.substring(0, cursor) + item + text.substring(cursor), cursor + item.length, cursor + item.length)
     }
 
@@ -127,27 +137,36 @@ object Formatting {
         return if (typed) newline(new, cursor) else null
     }
 
-    /** Un renglón: su sangría, dónde empieza la marca de lista y dónde el contenido. */
-    private class Line(val start: Int, val end: Int, val indent: String, val markerStart: Int, val contentStart: Int, val kind: Block?) {
+    /**
+     * Un renglón: su sangría, dónde empieza la marca de lista y dónde el
+     * contenido. [end] no incluye el `\r` de un fin de línea `\r\n`.
+     */
+    private class Line(val start: Int, val end: Int, val indent: String, val markerStart: Int, val contentStart: Int, val kind: Block?, val bullet: Char) {
         val blank get() = contentStart == end && kind == null
+
+        /** La marca de un elemento nuevo como este: misma viñeta, y un checkbox sin marcar. */
+        fun next() = if (kind == Block.CHECKBOX) "$bullet [ ] " else "$bullet "
 
         companion object {
             private val TASK = Regex("[-*+] \\[[ xX]\\] ")
             private val BULLET = Regex("[-*+] ")
+            /** Una línea horizontal (`* * *`, `- - -`) no es una lista. */
+            private val RULE = Regex("([-*_])( *\\1){2,} *")
 
             fun parse(text: String, start: Int): Line {
-                val end = lineEnd(text, start)
+                var end = lineEnd(text, start)
+                if (end > start && text[end - 1] == '\r') end--
                 var i = start
                 while (i < end && (text[i] == ' ' || text[i] == '\t')) i++
                 val indent = text.substring(start, i)
                 val rest = text.substring(i, end)
                 // Un `- [ ]` al final del renglón, sin espacio detrás, también es un checkbox vacío.
                 val task = TASK.matchAt(rest + " ", 0)?.takeIf { it.range.last <= rest.length }
-                val bullet = BULLET.matchAt(rest, 0)
+                val bullet = BULLET.matchAt(rest, 0)?.takeIf { !RULE.matches(rest) }
                 return when {
-                    task != null -> Line(start, end, indent, i, minOf(i + task.value.length, end), Block.CHECKBOX)
-                    bullet != null -> Line(start, end, indent, i, i + bullet.value.length, Block.LIST)
-                    else -> Line(start, end, indent, i, i, null)
+                    task != null -> Line(start, end, indent, i, minOf(i + task.value.length, end), Block.CHECKBOX, rest[0])
+                    bullet != null -> Line(start, end, indent, i, i + bullet.value.length, Block.LIST, rest[0])
+                    else -> Line(start, end, indent, i, i, null, '-')
                 }
             }
         }
@@ -178,6 +197,30 @@ object Formatting {
         return Formatted(out.toString(), map(start), map(end))
     }
 
+    /**
+     * Quita el bloque ```` ``` ```` de la selección: la de su contenido, con las
+     * vallas en los renglones de antes y después, o la que incluye las vallas.
+     */
+    private fun unfence(text: String, s: Int, e: Int): Formatted? {
+        fun isFence(line: String, opening: Boolean) = line.trimEnd('\r').let { if (opening) it.startsWith("```") else it == "```" }
+        if (s == lineStart(text, s) && s > 0 && e == lineEnd(text, e) && e < text.length) {
+            val openStart = lineStart(text, s - 1)
+            val closeEnd = lineEnd(text, e + 1)
+            if (isFence(text.substring(openStart, s - 1), true) && isFence(text.substring(e + 1, closeEnd), false)) {
+                val out = text.substring(0, openStart) + text.substring(s, e) + text.substring(closeEnd)
+                return Formatted(out, openStart, openStart + e - s)
+            }
+        }
+        val inner = text.substring(s, e)
+        val firstEnd = inner.indexOf('\n')
+        val lastStart = inner.lastIndexOf('\n')
+        if (firstEnd in 0 until lastStart && isFence(inner.substring(0, firstEnd), true) && isFence(inner.substring(lastStart + 1), false)) {
+            val content = inner.substring(firstEnd + 1, lastStart)
+            return Formatted(text.substring(0, s) + content + text.substring(e), s, s + content.length)
+        }
+        return null
+    }
+
     /** Un bloque de código con ``` en renglones aparte, para una selección de varias líneas. */
     private fun fence(text: String, s: Int, e: Int): Formatted {
         val open = (if (s > 0 && text[s - 1] != '\n') "\n" else "") + "```\n"
@@ -193,6 +236,41 @@ object Formatting {
         if (backwards) while (at - n - 1 >= 0 && text[at - n - 1] == c) n++
         else while (at + n < text.length && text[at + n] == c) n++
         return n
+    }
+
+    /**
+     * Si en el renglón de [at], antes de [at], queda abierto un [style]: un
+     * número impar de rachas que lo abren o cierran.
+     */
+    private fun insideSpan(text: String, at: Int, style: Inline): Boolean {
+        var i = lineStart(text, at)
+        var count = 0
+        while (i < at) {
+            val n = run(text, i, style, backwards = false)
+            if (n == 0) {
+                i++
+            } else {
+                if (closes(style, minOf(n, at - i))) count++
+                i += n
+            }
+        }
+        return count % 2 == 1
+    }
+
+    /** [s] sin las marcas de [style]: de cada racha que lo abre o cierra, las suyas. */
+    private fun strip(s: String, style: Inline): String {
+        val out = StringBuilder()
+        var i = 0
+        while (i < s.length) {
+            val n = run(s, i, style, backwards = false)
+            if (n == 0) {
+                out.append(s[i++])
+            } else {
+                out.append(style.marker[0].toString().repeat(if (closes(style, n)) n - style.marker.length else n))
+                i += n
+            }
+        }
+        return out.toString()
     }
 
     /**
