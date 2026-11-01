@@ -25,4 +25,9 @@
     <string name="note_gone">Esta nota ya no está en el vault.</string>
     <string name="link_missing">No hay ninguna nota «%1$s».</string>
     <string name="pick_a_note">Elige una nota de la lista.</string>
+    <string name="format_bold">Negrita</string>
+    <string name="format_italic">Cursiva</string>
+    <string name="format_list">Lista</string>
+    <string name="format_checkbox">Casilla</string>
+    <string name="format_code">Código</string>
 </resources>

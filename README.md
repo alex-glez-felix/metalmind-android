@@ -27,6 +27,28 @@ Sin tags, la nota cae al buzón. Para ponerle uno, escribe `#`: sobre el teclado
 
 Los tags salen de los `.md` de la carpeta elegida y sus subcarpetas, con las reglas de Metalmind: `#tag` al inicio de línea o tras un espacio (fuera de código y comentarios) y `tags:` del frontmatter. Para que estén todos, elige la raíz del vault. La primera vez se leen todas las notas; después la app guarda lo leído en su caché (nunca en el vault) y solo relee las que cambiaron.
 
+### Links
+
+Para enlazar otra nota, escribe `[[`: sobre el teclado aparecen las notas del vault, las que cambiaron hace menos primero, filtradas por lo que vas escribiendo sin distinguir mayúsculas ni acentos (`[[reu` → *Reunión del lunes*). Primero las que empiezan así, después las que lo tienen en el nombre y al final en la carpeta (`[[proy` → las de `proyectos/`). Si dos notas se llaman igual, debajo del nombre sale su carpeta.
+
+Tocar una escribe `[[nombre]]` como lo escribe Metalmind: solo el nombre si basta para llegar a esa nota, y si no, con las carpetas que hagan falta (`[[proyectos/rust]]`). Se cuenta desde la carpeta elegida, así que para que los nombres sean los del vault, elige la raíz. Las notas cuyo nombre lleva `[`, `]`, `|` o `#` no salen: un `[[link]]` no puede nombrarlas.
+
+### Formato
+
+Sobre el teclado hay una barra con negrita, cursiva, lista, checkbox y código. Escribe markdown plano (`**negrita**`, `*cursiva*`, `- `, `- [ ] `, `` `código` ``), así que la nota queda igual en el escritorio:
+
+- **Negrita, cursiva y código** envuelven lo seleccionado; con varias líneas, el código va en un bloque ```` ``` ````. Sin selección escriben el par de marcas con el cursor en medio, y al tocar otra vez el cursor sale del par para seguir escribiendo sin formato. Sobre algo que ya tiene ese formato, lo quitan.
+- **Lista y checkbox** se ponen al inicio del renglón (o de todos los seleccionados), y tocar otra vez los quita. Una lista pasa a checkbox y al revés. Con el cursor al final de un elemento, empiezan otro debajo: la tecla de acción del teclado guarda, y así se escribe una lista en el teléfono.
+- Con teclado físico, `Enter` tras un elemento empieza otro igual, y `Enter` en uno vacío termina la lista.
+
+| Atajo | Formato |
+| --- | --- |
+| `Ctrl+B` | Negrita |
+| `Ctrl+I` | Cursiva |
+| `Ctrl+E` | Código |
+| `Ctrl+Shift+8` | Lista |
+| `Ctrl+Shift+9` | Checkbox |
+
 ### Buscar
 
 Toca la lupa arriba a la derecha (con teclado físico, `Ctrl+K`). Los resultados salen conforme escribes:
@@ -94,7 +116,7 @@ Con git funciona igual: elige la carpeta del clon (por ejemplo, la de Termux o l
 
 ## Desarrollo
 
-- `core/`: Kotlin puro, sin Android. Nombres de archivo, contenido y el "crear sin pisar", los tags, el índice del vault (`VaultIndex`) y la búsqueda (`NoteSearch`). Tests JVM: `./gradlew :core:test`.
+- `core/`: Kotlin puro, sin Android. Nombres de archivo, contenido y el "crear sin pisar", los tags, los links (`LinkCompletion`), el formato (`Formatting`), el índice del vault (`VaultIndex`) y la búsqueda (`NoteSearch`). Tests JVM: `./gradlew :core:test`.
 - `app/`: la app, Jetpack Compose. Lee y escribe en la carpeta con el Storage Access Framework. Cuándo hay dos paneles y cómo se mueven las flechas por la lista están en `Panes`, con tests JVM: `./gradlew :app:testDebugUnitTest`.
 
 Licencia: GPL-3.0.
