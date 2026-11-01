@@ -69,6 +69,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import io.github.alexglezfelix.metalmind.core.Capture
 import io.github.alexglezfelix.metalmind.core.CaptureResult
+import io.github.alexglezfelix.metalmind.core.LinkCompletion
 import io.github.alexglezfelix.metalmind.core.SharedText
 import io.github.alexglezfelix.metalmind.core.TagCompletion
 import io.github.alexglezfelix.metalmind.core.VaultIndex
@@ -142,14 +143,19 @@ private fun CaptureScreen(settings: VaultSettings, initialText: String, onSaved:
         return
     }
 
-    // El índice del vault (los tags y, con dos paneles, la búsqueda): primero
-    // el de la caché, enseguida; después, al día. Si no se puede leer la
-    // carpeta, quedan los de la caché y el guardado dirá lo que haga falta.
+    // El índice del vault (los tags, las notas para `[[` y, con dos paneles,
+    // la búsqueda): primero el de la caché, enseguida; después, al día. Si no
+    // se puede leer la carpeta, quedan los de la caché y el guardado dirá lo
+    // que haga falta.
     val search = rememberSearchState(current)
     val tags = search.index ?: VaultIndex.EMPTY
     val captureFocus = remember { FocusRequester() }
     val query = if (field.selection.collapsed) TagCompletion.at(text, field.selection.end) else null
     val suggestions = remember(query, tags) { query?.let { tags.suggestions(it.prefix) }.orEmpty() }
+    val linkQuery = if (field.selection.collapsed) LinkCompletion.at(text, field.selection.end) else null
+    val links = remember(linkQuery, tags) { linkQuery?.let { tags.linkSuggestions(it.prefix) }.orEmpty() }
+    // Preparar las notas para `[[` fuera del hilo principal, antes de que se escriba.
+    LaunchedEffect(tags) { withContext(Dispatchers.Default) { tags.linkSuggestions("", 1) } }
 
     val savedFormat = stringResource(R.string.saved)
     val writeErrorFormat = stringResource(R.string.error_write)
@@ -227,12 +233,28 @@ private fun CaptureScreen(settings: VaultSettings, initialText: String, onSaved:
             },
             snackbarHost = { SnackbarHost(snackbar) },
             bottomBar = {
-                if (query != null && suggestions.isNotEmpty()) {
-                    TagSuggestions(suggestions) { picked ->
-                        val done = TagCompletion.accept(text, query, picked.name)
-                        field = TextFieldValue(done.text, TextRange(done.cursor))
-                    }
-                }
+                CaptureToolbar(
+                    suggestions = when {
+                        linkQuery != null && links.isNotEmpty() -> {
+                            {
+                                LinkSuggestions(links) { picked ->
+                                    val done = LinkCompletion.accept(text, linkQuery, picked.target)
+                                    field = TextFieldValue(done.text, TextRange(done.cursor))
+                                }
+                            }
+                        }
+                        query != null && suggestions.isNotEmpty() -> {
+                            {
+                                TagSuggestions(suggestions) { picked ->
+                                    val done = TagCompletion.accept(text, query, picked.name)
+                                    field = TextFieldValue(done.text, TextRange(done.cursor))
+                                }
+                            }
+                        }
+                        else -> null
+                    },
+                    onFormat = { field = it.apply(field) },
+                )
             },
             floatingActionButton = {
                 if (text.isNotBlank()) {
@@ -244,9 +266,10 @@ private fun CaptureScreen(settings: VaultSettings, initialText: String, onSaved:
         ) { padding ->
             CaptureField(
                 value = field,
-                onValueChange = { field = it },
+                onValueChange = { field = continueList(field, it) },
                 onSave = ::save,
                 onSearch = onSearch,
+                onFormat = { field = it.apply(field) },
                 focus = captureFocus,
                 modifier = Modifier.padding(padding).fillMaxSize(),
             )
@@ -337,6 +360,7 @@ private fun CaptureField(
     onSave: () -> Unit,
     onSearch: () -> Unit,
     focus: FocusRequester,
+    onFormat: (Format) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
@@ -349,7 +373,8 @@ private fun CaptureField(
         onValueChange = onValueChange,
         placeholder = { Text(stringResource(R.string.placeholder)) },
         // La tecla de acción del teclado guarda; con teclado físico, Ctrl+Enter.
-        // Ctrl+K abre la búsqueda (con dos paneles, va a su campo).
+        // Ctrl+K abre la búsqueda (con dos paneles, va a su campo); los
+        // atajos de formato, en Format.forShortcut.
         keyboardOptions = KeyboardOptions(
             capitalization = KeyboardCapitalization.Sentences,
             imeAction = ImeAction.Send,
@@ -365,6 +390,10 @@ private fun CaptureField(
             .focusRequester(focus)
             .onPreviewKeyEvent {
                 if (it.type != KeyEventType.KeyDown || !it.isCtrlPressed) return@onPreviewKeyEvent false
+                Format.forShortcut(it)?.let { format ->
+                    onFormat(format)
+                    return@onPreviewKeyEvent true
+                }
                 when (it.key) {
                     Key.Enter -> onSave()
                     Key.K -> onSearch()

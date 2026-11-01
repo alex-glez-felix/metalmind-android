@@ -17,6 +17,12 @@ data class NoteFile(val id: String, val modified: Long, val size: Long, val path
 /** Un tag para sugerir: su forma más usada y en cuántas notas está. */
 data class TagSuggestion(val name: String, val notes: Int)
 
+/**
+ * Una nota para sugerir al escribir `[[`: su [title], la carpeta donde está
+ * ([folder], vacía en la raíz) y [target], lo que va entre `[[` y `]]`.
+ */
+data class LinkSuggestion(val title: String, val folder: String, val target: String)
+
 /** Una nota del índice, para mostrarla. [text] es el archivo entero, en NFC. */
 data class IndexedNote(val id: String, val path: String, val modified: Long, val text: String) {
     /** El nombre del archivo sin `.md` ni carpetas, como Metalmind. */
@@ -45,6 +51,24 @@ class VaultIndex private constructor(private val files: Map<String, Entry>) {
     }
 
     private class Tag(val notes: Int, val name: String, val key: String)
+
+    /** Una nota como destino de link: su ruta sin `.md` tal cual y en [linkKey], y su título plegado. */
+    private class LinkName(val modified: Long, val path: String, val key: String) {
+        val title = path.substringAfterLast('/')
+        val folded = NoteSearch.fold(title)
+        val foldedPath = NoteSearch.fold(path)
+        val depth = path.count { it == '/' }
+
+        /** El destino, calculado la primera vez que se sugiere. */
+        var target: String? = null
+
+        /**
+         * Si `[[ruta]]` llega a esta nota: sin `[`, `]`, `|`, `#` ni `^` (que
+         * cortan el link o el destino), sin espacios en los bordes (se
+         * recortan) y sin otro `.md` al final (se quitaría al resolver).
+         */
+        val writable = path.none { it in "[]|#^" } && path == path.trim() && !path.endsWith(".md", ignoreCase = true)
+    }
 
     val noteCount: Int get() = files.size
 
@@ -90,6 +114,70 @@ class VaultIndex private constructor(private val files: Map<String, Entry>) {
         return (starts + contains).take(limit).map { TagSuggestion(it.name, it.notes) }.toList()
     }
 
+    /** Las notas como destino de link, de la más reciente a la más vieja. */
+    private val linkNames: List<LinkName> by lazy {
+        files.values
+            .map { val path = TagName.nfc(stripMd(it.path)); LinkName(it.modified, path, linkKey(path)) }
+            .filter { it.writable }
+            .sortedWith(compareByDescending<LinkName> { it.modified }.thenBy { it.path })
+    }
+
+    /** Las de [linkNames] por nombre sin mayúsculas, para ver si un destino empata. */
+    private val linksByName: Map<String, List<LinkName>> by lazy {
+        linkNames.groupBy { it.key.substringAfterLast('/') }
+    }
+
+    /**
+     * Las notas para un `[[link]]` que sigue con [prefix] (lo escrito tras el
+     * `[[`), sin distinguir mayúsculas ni acentos: primero las que empiezan
+     * así, después las que lo tienen en el nombre y al final en la ruta
+     * (`proyectos/ru` encuentra `proyectos/rust`); en cada grupo, la más
+     * reciente primero. Vacío, las últimas que cambiaron. Las notas que un
+     * `[[link]]` no puede nombrar (ver [LinkName.writable]) no salen.
+     */
+    fun linkSuggestions(prefix: String, limit: Int = 20): List<LinkSuggestion> {
+        val wanted = NoteSearch.fold(TagName.nfc(prefix.trim()))
+        val starts = ArrayList<LinkName>()
+        val inTitle = ArrayList<LinkName>()
+        val inPath = ArrayList<LinkName>()
+        // Una sola pasada, que para en cuanto hay [limit] que empiezan así.
+        for (note in linkNames) {
+            when {
+                note.folded.startsWith(wanted) -> starts += note
+                wanted in note.folded -> inTitle += note
+                wanted in note.foldedPath -> inPath += note
+            }
+            if (starts.size >= limit) break
+        }
+        return (starts + inTitle + inPath).take(limit).map { note ->
+            LinkSuggestion(note.title, note.path.substringBeforeLast('/', ""), note.target ?: target(note).also { note.target = it })
+        }
+    }
+
+    /**
+     * Lo más corto que lleva a [note] desde una nota en la raíz de la carpeta,
+     * como el autocompletado de Metalmind (`links/complete.rs`): el nombre si
+     * no empata con otro, si no la ruta con las carpetas que hagan falta.
+     * Empatar es que otra nota con ese final de ruta esté a la misma
+     * profundidad o menos; entre las igual de hondas gana la única escrita
+     * igual, como `resolve_name` de Metalmind.
+     */
+    private fun target(note: LinkName): String {
+        val parts = note.path.split('/')
+        val sameName = linksByName[note.key.substringAfterLast('/')].orEmpty()
+        for (n in 1..parts.size) {
+            val candidate = parts.subList(parts.size - n, parts.size).joinToString("/")
+            val key = linkKey(candidate)
+            val matching = sameName.filter { it.key == key || it.key.endsWith("/$key") }
+            val shallowest = matching.minOf { it.depth }
+            val tied = matching.filter { it.depth == shallowest }
+            if (tied.size == 1 && tied[0] === note) return candidate
+            val exact = tied.filter { it.path == candidate || it.path.endsWith("/$candidate") }
+            if (exact.size == 1 && exact[0] === note) return candidate
+        }
+        return note.path
+    }
+
     /** Las notas que coinciden con [query] (ver [NoteSearch]), las mejores primero. */
     fun search(query: String, limit: Int = 50): List<SearchHit> =
         NoteSearch.search(
@@ -104,21 +192,29 @@ class VaultIndex private constructor(private val files: Map<String, Entry>) {
      * La nota a la que lleva un `[[link]]`: sin el `#encabezado`, con o sin
      * `.md`, por nombre o por ruta (`[[rust]]` o `[[proyectos/rust]]`) y sin
      * distinguir mayúsculas. Si hay varias con ese nombre, la de ruta más
-     * corta, como Obsidian.
+     * corta, como Obsidian; entre las igual de cortas, la escrita igual, como
+     * Metalmind.
      */
     fun resolve(target: String): IndexedNote? {
-        val wanted = linkKey(target.substringBefore('#').substringBefore('^').trim().removeSuffix(".md"))
+        val written = TagName.nfc(target.substringBefore('#').substringBefore('^').trim().removeSuffix(".md"))
+        val wanted = linkKey(written)
         if (wanted.isEmpty()) return null
         return files.entries
             .filter { (_, entry) ->
-                val path = linkKey(entry.path.removeSuffix(".md").removeSuffix(".MD"))
+                val path = linkKey(stripMd(entry.path))
                 path == wanted || path.endsWith("/$wanted")
             }
-            .minWithOrNull(compareBy<Map.Entry<String, Entry>> { it.value.path.count { c -> c == '/' } }.thenBy { it.value.path })
+            .minWithOrNull(
+                compareBy<Map.Entry<String, Entry>> { it.value.path.count { c -> c == '/' } }
+                    .thenBy { TagName.nfc(stripMd(it.value.path)).let { p -> p != written && !p.endsWith("/$written") } }
+                    .thenBy { it.value.path },
+            )
             ?.let { (id, entry) -> IndexedNote(id, entry.path, entry.modified, entry.text) }
     }
 
     private fun linkKey(s: String) = TagName.nfc(s).lowercase(Locale.ROOT)
+
+    private fun stripMd(path: String) = if (path.endsWith(".md", ignoreCase = true)) path.dropLast(3) else path
 
     /**
      * El índice de las notas de [listing]: las que no cambiaron salen de este,
