@@ -62,8 +62,9 @@ Java_io_github_alexglezfelix_metalmind_WhisperNative_loadBackends(JNIEnv * env, 
     ggml_backend_dev_t cpu = ggml_backend_dev_by_type(GGML_BACKEND_DEVICE_TYPE_CPU);
     if (cpu == nullptr) return env->NewStringUTF((info + ", sin CPU de ggml").c_str());
     ggml_backend_reg_t reg = ggml_backend_dev_backend_reg(cpu);
+    const char * description = ggml_backend_dev_description(cpu);
     info += ", ";
-    info += ggml_backend_dev_description(cpu);
+    info += description != nullptr ? description : "CPU";
     auto features = reinterpret_cast<ggml_backend_get_features_t>(
         ggml_backend_reg_get_proc_address(reg, "ggml_backend_get_features"));
     if (features != nullptr) {
@@ -71,7 +72,7 @@ Java_io_github_alexglezfelix_metalmind_WhisperNative_loadBackends(JNIEnv * env, 
         for (const ggml_backend_feature * f = features(reg); f->name != nullptr; ++f) {
             info += ' ';
             info += f->name;
-            if (std::string(f->value) != "1") {
+            if (f->value != nullptr && std::string(f->value) != "1") {
                 info += '=';
                 info += f->value;
             }

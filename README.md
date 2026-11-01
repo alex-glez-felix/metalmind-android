@@ -119,7 +119,7 @@ Todavía no hay versiones publicadas. Cada build de CI deja el APK debug como ar
 2. Descarga el artefacto `metalmind-debug-apk` (un `.zip` con `app-debug.apk`) y descomprímelo.
 3. Pásalo al teléfono y ábrelo. Android pedirá permitir instalar apps de esa fuente (el navegador o el gestor de archivos): acéptalo solo para esta instalación.
 
-Todos los APK debug se firman con la misma clave (`app/debug.keystore`, que no es secreta), así que uno nuevo se instala encima del anterior sin perder el modelo ni la carpeta. Los APK de CI anteriores a esa clave estaban firmados con otra: para pasar de uno de esos a uno nuevo hay que desinstalar una vez.
+Todos los APK debug se firman con la misma clave (`app/debug.keystore`, que es pública: cualquiera podría firmar con ella un APK que se instale encima, así que instala solo los de este repo), así que uno nuevo se instala encima del anterior sin perder el modelo ni la carpeta. Los APK de CI anteriores a esa clave estaban firmados con otra: para pasar de uno de esos a uno nuevo hay que desinstalar una vez.
 
 También por USB, con la depuración activada: `adb install app-debug.apk`.
 

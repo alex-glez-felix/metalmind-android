@@ -34,12 +34,13 @@ jobs:
       # nativo en Release (app/build.gradle.kts); esto avisa si deja de ser así.
       - name: whisper y ggml compilados con optimización
         run: |
-          files=$(ls app/.cxx/*/*/*/compile_commands.json)
+          # .cxx/tools/ tiene copias de los mismos archivos. Gana el último -O.
+          files=$(ls app/.cxx/*/*/*/compile_commands.json | grep -v /tools/)
           for f in $files; do
-            jq -e 'length > 0 and all(.[]; .command | test(" -O[23] "))' "$f" > /dev/null \
+            jq -e 'length > 0 and all(.[]; [.command | scan(" -O[0-3sgz]?(?= )")] | last // "" | test("-O[23]"))' "$f" > /dev/null \
               || { echo "::error::$f: código nativo sin optimizar"; exit 1; }
           done
-          echo "$(echo "$files" | wc -l) configuraciones de CMake, todas con -O2/-O3"
+          echo "$(echo "$files" | wc -l) ABI, todo el código nativo con -O2/-O3"
 
       - name: Reportes de lint y tests
         if: failure()

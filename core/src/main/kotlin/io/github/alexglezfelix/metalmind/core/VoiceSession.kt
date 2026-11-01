@@ -31,7 +31,8 @@ sealed interface VoiceState {
 
     /**
      * Listo: [text] va al campo de captura; [audio], si se quiere guardar.
-     * [millis] es lo que tardó whisper, para saber si el teléfono va bien.
+     * [millis] es lo que se esperó desde que se dejó de grabar (cargar el
+     * modelo y whisper), para saber si el teléfono va bien con ese modelo.
      */
     class Done(val text: String, val audio: ShortArray, val millis: Long) : VoiceState {
         val audioSeconds: Int get() = audio.size / VoiceRecorder.SAMPLE_RATE

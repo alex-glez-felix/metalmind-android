@@ -19,6 +19,18 @@ class TranscribeThreadsTest {
     }
 
     @Test
+    fun `un Snapdragon 8 Elite no tiene núcleos pequeños y usa los ocho`() {
+        // 2× Oryon a 4.32 GHz y 6× Oryon a 3.53.
+        assertEquals(8, TranscribeThreads.choose(List(6) { 3532800L } + List(2) { 4320000L }, available = 8))
+    }
+
+    @Test
+    fun `un Tensor G3 deja fuera solo los A510`() {
+        // 4× A510 a 1.7 GHz, 4× A715 a 2.37, 1× X3 a 2.91.
+        assertEquals(5, TranscribeThreads.choose(List(4) { 1704000L } + List(4) { 2367000L } + 2910000L, available = 9))
+    }
+
+    @Test
     fun `un clásico 4 grandes y 4 pequeños usa los 4 grandes`() {
         assertEquals(4, TranscribeThreads.choose(List(4) { 1800000L } + List(4) { 2800000L }, available = 8))
     }
