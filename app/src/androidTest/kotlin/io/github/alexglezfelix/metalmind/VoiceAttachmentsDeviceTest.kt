@@ -44,29 +44,36 @@ class VoiceAttachmentsDeviceTest {
         }
     }
 
-    /** Usa la carpeta del vault que la app ya tenga elegida; sin ella, se salta. */
+    /** Usa la carpeta del vault que la app ya tenga elegida; sin ella, se salta. Borra lo que escribe. */
     @Test
     fun soloVanAlVaultLosAudiosQueLaNotaEnlaza() {
         val tree = VaultSettings(context).folder
         assumeTrue("la app no tiene carpeta elegida", tree != null)
         val attachments = VoiceAttachments(context)
+        val before = vaultAttachments(tree!!).map { it.second }
         val kept = attachments.add(tone, LocalDateTime.of(2001, 1, 1, 0, 0, 1))
         val dropped = attachments.add(tone, LocalDateTime.of(2001, 1, 1, 0, 0, 2))
         val text = "Prueba de voz\n${AudioAttachment.embed(kept)}"
 
-        val saved = attachments.saveFor(context.contentResolver, tree!!, text)
+        val saved = attachments.saveFor(context.contentResolver, tree, text)
 
-        assertEquals(text, saved)
-        val names = vaultAttachments(tree)
-        assertTrue(names.toString(), kept in names)
-        assertTrue(names.toString(), dropped !in names)
+        // Con nombre tomado (de una corrida anterior) usa el siguiente y corrige el enlace.
+        val written = Regex("""!\[\[(.+)]]""").find(saved)!!.groupValues[1]
+        assertEquals(text.replace(kept, written), saved)
+        val after = vaultAttachments(tree)
+        assertEquals((before + written).sorted(), after.map { it.second }.sorted())
+        assertTrue(dropped !in after.map { it.second } || dropped in before)
         // Ya guardado, sale de los pendientes: guardar otra vez no lo duplica.
         assertEquals(text, attachments.saveFor(context.contentResolver, tree, text))
-        assertEquals(names, vaultAttachments(tree))
+        assertEquals(after, vaultAttachments(tree))
+
         File(context.cacheDir, "voz/$dropped").delete()
+        val id = after.first { it.second == written }.first
+        DocumentsContract.deleteDocument(context.contentResolver, DocumentsContract.buildDocumentUriUsingTree(tree, id))
     }
 
-    private fun vaultAttachments(tree: android.net.Uri): List<String> {
+    /** Los archivos de `adjuntos/`: (id, nombre). */
+    private fun vaultAttachments(tree: android.net.Uri): List<Pair<String, String>> {
         val resolver = context.contentResolver
         val root = DocumentsContract.getTreeDocumentId(tree)
         fun children(id: String) = resolver.query(
@@ -74,7 +81,7 @@ class VoiceAttachmentsDeviceTest {
             arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME),
             null, null, null,
         )!!.use { c -> buildList { while (c.moveToNext()) add(c.getString(0) to c.getString(1)) } }
-        val folder = children(root).first { it.second == AudioAttachment.FOLDER }.first
-        return children(folder).map { it.second }
+        val folder = children(root).firstOrNull { it.second == AudioAttachment.FOLDER } ?: return emptyList()
+        return children(folder.first)
     }
 }
