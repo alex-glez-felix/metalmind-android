@@ -134,6 +134,20 @@ class VoiceSessionTest {
     }
 
     @Test
+    fun `si el micrófono no se puede abrir lo dice en vez de cerrar la app`() = runTest {
+        val session = VoiceSession(
+            scope = this,
+            newRecorder = { throw IOException("no se pudo abrir el micrófono") },
+            transcriber = FakeTranscriber { "hola" },
+            io = StandardTestDispatcher(testScheduler),
+        )
+        session.start()
+        assertEquals(VoiceState.Failed("no se pudo abrir el micrófono"), session.state.value)
+        session.dismiss()
+        assertEquals(VoiceState.Idle, session.state.value)
+    }
+
+    @Test
     fun `no empieza otra mientras hay una en curso`() = runTest {
         var recorders = 0
         lateinit var session: VoiceSession

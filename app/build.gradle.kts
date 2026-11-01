@@ -19,9 +19,11 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Las notas de voz usan whisper.cpp (código nativo). arm64 son los
-        // teléfonos y tablets de hoy; x86_64, el emulador.
+        // teléfonos y tablets de hoy; armeabi-v7a, los de 32 bits (sin
+        // bibliotecas para su ABI, Android no instalaría la app); x86_64, el
+        // emulador.
         ndk {
-            abiFilters += listOf("arm64-v8a", "x86_64")
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         }
         externalNativeBuild {
             cmake {

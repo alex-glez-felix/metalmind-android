@@ -54,7 +54,12 @@ class WhisperTranscriber(private val model: () -> File?, private val nativeLibra
         @Synchronized
         private fun loadNative(dir: String) {
             if (loaded) return
-            System.loadLibrary("metalmind_voz")
+            try {
+                System.loadLibrary("metalmind_voz")
+            } catch (e: UnsatisfiedLinkError) {
+                // Un Error, no una Exception: sin convertirlo, cerraría la app.
+                throw IOException("whisper no está disponible en este procesador", e)
+            }
             WhisperNative.loadBackends(dir)
             loaded = true
         }

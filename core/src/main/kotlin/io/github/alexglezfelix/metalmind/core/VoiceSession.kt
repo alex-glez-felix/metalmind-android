@@ -60,7 +60,14 @@ class VoiceSession(
 
     fun start() {
         if (busy) return
-        val rec = newRecorder()
+        // Abrir el micrófono puede fallar (otra app lo tiene, no graba a 16 kHz):
+        // se muestra como cualquier otro error, no cierra la app.
+        val rec = try {
+            newRecorder()
+        } catch (e: Exception) {
+            _state.value = VoiceState.Failed(e.message ?: e.javaClass.simpleName)
+            return
+        }
         recorder = rec
         cancelled = false
         _state.value = VoiceState.Recording(0, 0f, paused = false)

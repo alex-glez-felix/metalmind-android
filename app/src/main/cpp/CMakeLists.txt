@@ -29,6 +29,9 @@ set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
 set(GGML_BACKEND_DL ON CACHE BOOL "" FORCE)
 if (ANDROID_ABI STREQUAL "arm64-v8a")
     set(GGML_CPU_ALL_VARIANTS ON CACHE BOOL "" FORCE)
+elseif (ANDROID_ABI STREQUAL "armeabi-v7a")
+    # Teléfonos de 32 bits: una sola variante (NEON). Lentos para whisper, pero
+    # sin bibliotecas para su ABI Android ni dejaría instalar la app.
 else()
     # x86_64 es para el emulador: una sola variante, con lo que expone su
     # CPU virtual (SSE4.2, AVX y F16C; sin AVX2 ni FMA).
