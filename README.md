@@ -42,9 +42,9 @@ Tocar un resultado abre la nota **solo para leer**: los encabezados y el código
 
 ### Tablet y pantallas grandes
 
-Cuando la ventana es grande en las dos direcciones (al menos 600 × 480 dp: una tablet en cualquier orientación, o una ventana dividida que quede así de grande), la app se parte en dos paneles: la búsqueda a la izquierda y, a la derecha, la nota abierta o, si no hay ninguna, la captura. Un teléfono, también acostado, sigue con un panel. La app no fija la orientación: al girar se reacomoda sin perder lo escrito ni la nota abierta.
+Cuando la ventana es grande en las dos direcciones (al menos 600 × 480 dp: una tablet en cualquier orientación, o una ventana dividida que quede así de grande), la app se parte en dos paneles: la búsqueda a la izquierda y, a la derecha, la nota abierta o, si no hay ninguna, la captura. Un teléfono, también acostado, sigue con un panel. La app no fija la orientación: al girar se reacomoda sin perder lo escrito ni la nota abierta. Con dos paneles, la lista se relee al volver a la app y al guardar, así la nota recién guardada ya sale.
 
-Con teclado físico (con dos paneles; en un panel, `Ctrl+K`, `Enter`, `Esc` y `Ctrl+Enter` hacen lo de siempre):
+Con teclado físico, en la captura con dos paneles (en un panel, `Ctrl+K`, `Enter`, `Esc` y `Ctrl+Enter` hacen lo de siempre):
 
 | Atajo | Qué hace |
 | --- | --- |
