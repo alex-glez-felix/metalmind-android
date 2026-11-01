@@ -205,6 +205,64 @@ class NoteMarkdownTest {
     }
 
     @Test
+    fun `comentarios que empiezan o terminan a media línea`() {
+        assertEquals("Idea \nPárrafo importante\nOtro", text("Idea %%\nborrador\n%%\nPárrafo importante\nOtro"))
+        assertEquals("Texto \nmás texto", text("Texto %%comentario\nque sigue%% más texto"))
+        assertEquals("visible", text("%%\nsecreto\n%% visible"))
+        assertEquals("a\nb", text("a\n%%\nx\n%%\nb"))
+    }
+
+    @Test
+    fun `fórmulas tal cual`() {
+        val md = "si \$a*b\$ y \$c*d\$ entonces \$\\{x\\}\$ y \$\$e_1 * e_2\$\$, cuesta \$5 o *\$6*"
+        assertEquals("si \$a*b\$ y \$c*d\$ entonces \$\\{x\\}\$ y \$\$e_1 * e_2\$\$, cuesta \$5 o \$6", text(md))
+        assertEquals(listOf("\$6"), styled(md, Style.Italic))
+        assertEquals("\$\$\n*a*\n\$\$\nb", text("\$\$\n*a*\n\$\$\n*b*"))
+    }
+
+    @Test
+    fun `bloques de código en listas y citas`() {
+        val md = "1. Paso\n    ```bash\n    rm *.tmp # borra *todo*\n    ```\n2. Otro"
+        assertEquals("1. Paso\nrm *.tmp # borra *todo*\n2. Otro", text(md))
+        assertEquals(listOf("rm *.tmp # borra *todo*"), styled(md, Style.CodeBlock))
+        assertEquals(listOf(1, 1, 1), render(md).indents.map { it.level })
+
+        val quote = "> [!example]\n> ```python\n> x = a*b*c\n> ```\n> fin"
+        assertEquals("▎ Example\n▎ x = a*b*c\n▎ fin", text(quote))
+        assertEquals(listOf("x = a*b*c"), styled(quote, Style.CodeBlock))
+        assertEquals("\tx", text("\t```\n\t\tx\n\t```"))
+    }
+
+    @Test
+    fun `listas anidadas con tab o con cuatro espacios`() {
+        assertEquals(listOf(1, 2, 3), render("- a\n\t- b\n\t\t- c").indents.map { it.level })
+        assertEquals("• a\n◦ b\n• c", text("- a\n\t- b\n\t\t- c"))
+        assertEquals(listOf(1, 2, 1), render("- a\n    - b\n- c").indents.map { it.level })
+        // Un párrafo sin sangría termina la lista: la siguiente vuelve al primer nivel.
+        assertEquals(listOf(1, 1), render("  - a\ntexto\n- b").indents.map { it.level })
+    }
+
+    @Test
+    fun `tarea vacía`() {
+        assertEquals("☐ \n☑ ", text("- [ ]\n- [x]"))
+    }
+
+    @Test
+    fun `un destino con espacios no es link, salvo entre ángulos`() {
+        assertEquals("[x](mi nota.md)", text("[x](mi nota.md)"))
+        assertEquals(listOf("x -> nota:mi nota.md"), links("[x](<mi nota.md>)"))
+        assertEquals(listOf("x -> https://a.org"), links("[x](https://a.org \"título\")"))
+        assertEquals(listOf("x -> nota:otra.md"), links("[x](../../otra.md)"))
+    }
+
+    @Test
+    fun `el título del callout lleva formato y links`() {
+        val md = "> [!note] Título con [[nota]] y **negrita**"
+        assertEquals("▎ Título con nota y negrita", text(md))
+        assertEquals(listOf("nota -> nota:nota"), links(md))
+    }
+
+    @Test
     fun `tablas tal cual en monoespaciada`() {
         val md = "| a | **b** |\n|---|---|\n| #tag | [[x]] |"
         assertEquals(md, text(md))

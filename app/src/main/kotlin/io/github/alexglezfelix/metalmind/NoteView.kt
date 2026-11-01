@@ -223,7 +223,11 @@ private const val MARKER_EM = 0.5f
 /** Un carácter invisible que casi nunca está en una nota. */
 private const val LINE_SEPARATOR = '\u2060'
 
-/** Lo copiado de la nota, con saltos de línea normales en vez de [LINE_SEPARATOR]. */
+/**
+ * Lo copiado de la nota, con saltos de línea normales en vez de [LINE_SEPARATOR].
+ * `SelectionContainer` copia con `LocalClipboardManager` en Compose 1.7; si al
+ * actualizar pasa a `LocalClipboard`, hay que envolver ese.
+ */
 private class NoteClipboard(private val clipboard: ClipboardManager) : ClipboardManager by clipboard {
     override fun setText(annotatedString: AnnotatedString) {
         clipboard.setText(AnnotatedString(annotatedString.text.replace(LINE_SEPARATOR, '\n')))

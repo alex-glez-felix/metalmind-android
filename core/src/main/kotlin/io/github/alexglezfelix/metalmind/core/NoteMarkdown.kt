@@ -68,24 +68,10 @@ object NoteMarkdown {
                 if (end >= src.length || src.substring(at, end).isNotBlank()) break
                 at = end + 1
             }
-            var fence: Fence? = null
-            var comment = false
             while (at <= src.length) {
                 val end = lineEnd(at)
                 val line = src.substring(at, end).removeSuffix("\r")
-                val lineEnd = at + line.length
-                when {
-                    comment -> if (line.contains("%%")) comment = false
-                    fence != null -> if (closes(fence, line)) fence = null else codeLine(at, lineEnd)
-                    else -> {
-                        val open = openingFence(line)
-                        when {
-                            open != null -> fence = open
-                            line.trimStart().startsWith("%%") && commentOpens(line) -> comment = true
-                            else -> block(at, lineEnd)
-                        }
-                    }
-                }
+                line(at, at + line.length)
                 at = end + 1
             }
             while (out.endsWith("\n")) out.setLength(out.length - 1)
@@ -99,16 +85,136 @@ object NoteMarkdown {
 
         private fun lineEnd(at: Int) = src.indexOf('\n', at).let { if (it < 0) src.length else it }
 
-        /** Una línea que empieza un comentario `%%` que no cierra en ella. */
-        private fun commentOpens(line: String): Boolean {
-            val t = line.trimStart()
-            return t.indexOf("%%", 2) < 0
+        /** Un bloque de código abierto: su valla, y en cuántas citas y con qué sangría empezó. */
+        private inner class OpenFence(val fence: Fence, val quotes: Int, val indent: Int, val level: Int)
+
+        private var fence: OpenFence? = null
+
+        /** Dentro de un comentario `%%` que viene de una línea anterior. */
+        private var comment = false
+
+        /** Dentro de una fórmula `$$` de varias líneas. */
+        private var mathBlock = false
+
+        /** Un `%%` de esta línea que no cierra en ella. */
+        private var commentOpened = false
+
+        /** Las columnas de las viñetas de las listas abiertas, de fuera hacia dentro. */
+        private val listColumns = mutableListOf<Int>()
+
+        private fun line(from: Int, to: Int) {
+            if (comment) {
+                val close = src.indexOf("%%", from)
+                if (close < 0 || close >= to) return
+                comment = false
+                // Lo que sigue al cierre se ve, como texto.
+                if (src.substring(close + 2, to).isNotBlank()) {
+                    val mark = out.length
+                    commentOpened = false
+                    inline(indentation(close + 2, to).second, to)
+                    finishLine(mark, 0, 0, quote = false)
+                    comment = commentOpened
+                    dropIfCommentOnly(mark)
+                }
+                return
+            }
+            if (mathBlock) {
+                out.append(src, from, to).append('\n')
+                if (src.substring(from, to).contains("$$")) mathBlock = false
+                return
+            }
+            val (quotes, afterQuotes) = quotes(from, to)
+            val (indent, content) = indentation(afterQuotes, to)
+            fence?.let { open ->
+                if (quotes >= open.quotes) {
+                    val stripped = src.substring(skipColumns(afterQuotes, to, open.indent), to)
+                    if (closes(open.fence, stripped)) {
+                        fence = null
+                    } else {
+                        codeLine(skipColumns(afterQuotes, to, open.indent), to, open.quotes, open.level)
+                    }
+                    return
+                }
+                // Una cita que se acaba cierra también el bloque que estaba en ella.
+                fence = null
+            }
+            openingFence(src.substring(content, to))?.let {
+                val level = if (indent > 0) listColumns.count { c -> c < indent } else 0
+                fence = OpenFence(it, quotes, indent, level)
+                return
+            }
+            val trimmed = src.substring(content, to)
+            if (trimmed.startsWith("$$") && trimmed.indexOf("$$", 2) < 0) {
+                mathBlock = true
+                out.append(src, from, to).append('\n')
+                return
+            }
+            val mark = out.length
+            commentOpened = false
+            block(from, to)
+            if (commentOpened) {
+                comment = true
+                dropIfCommentOnly(mark)
+            }
         }
 
-        private fun codeLine(from: Int, to: Int) {
+        /** Quita la línea de [mark] en adelante si no quedó nada más que un comentario. */
+        private fun dropIfCommentOnly(mark: Int) {
+            if (out.substring(mark).replace("▎", "").isNotBlank()) return
+            out.setLength(mark)
+            spans.removeAll { it.start >= mark }
+            indents.removeAll { it.start >= mark }
+        }
+
+        /** Cuántos `>` abren la línea, y dónde sigue. */
+        private fun quotes(from: Int, to: Int): Pair<Int, Int> {
+            var at = from
+            var quotes = 0
+            while (true) {
+                var i = at
+                while (i < to && i - at < 4 && src[i] == ' ') i++
+                if (i < to && src[i] == '>') {
+                    quotes++
+                    at = i + 1
+                    if (at < to && src[at] == ' ') at++
+                } else {
+                    return quotes to at
+                }
+            }
+        }
+
+        /** Las columnas de espacio al principio (un tab cuenta 4), y dónde termina. */
+        private fun indentation(from: Int, to: Int): Pair<Int, Int> {
+            var cols = 0
+            var i = from
+            while (i < to && (src[i] == ' ' || src[i] == '\t')) {
+                cols += if (src[i] == '\t') 4 else 1
+                i++
+            }
+            return cols to i
+        }
+
+        /** Salta hasta [cols] columnas de espacio. */
+        private fun skipColumns(from: Int, to: Int, cols: Int): Int {
+            var left = cols
+            var i = from
+            while (i < to && left > 0 && (src[i] == ' ' || src[i] == '\t')) {
+                left -= if (src[i] == '\t') 4 else 1
+                i++
+            }
+            return i
+        }
+
+        private fun codeLine(from: Int, to: Int, quotes: Int, level: Int) {
+            val lineStart = out.length
+            if (quotes > 0) {
+                out.append("▎ ".repeat(quotes))
+                styled(lineStart, out.length, Style.Marker)
+            }
             val start = out.length
             out.append(src, from, to)
             styled(start, out.length, Style.CodeBlock)
+            if (level > 0 || quotes > 0) indents += Indent(lineStart, out.length, level, 2 * quotes)
             out.append('\n')
         }
 
@@ -131,27 +237,21 @@ object NoteMarkdown {
             var hanging = 0
 
             // Citas: `>` y `> >`, con o sin espacio.
-            var quotes = 0
-            while (true) {
-                var i = at
-                while (i < to && i - at < 4 && src[i] == ' ') i++
-                if (i < to && src[i] == '>') {
-                    quotes++
-                    at = i + 1
-                    if (at < to && src[at] == ' ') at++
-                } else {
-                    break
-                }
-            }
+            val (quotes, afterQuotes) = quotes(from, to)
+            at = afterQuotes
             if (quotes > 0) {
                 val start = out.length
                 out.append("▎ ".repeat(quotes))
                 styled(start, out.length, Style.Marker)
                 hanging += 2 * quotes
                 CALLOUT.matchAt(src.substring(at, to), 0)?.let { m ->
-                    val title = m.groupValues[2].ifBlank { m.groupValues[1].replaceFirstChar { it.uppercase() } }
                     val s = out.length
-                    out.append(title)
+                    val title = m.groups[2]!!
+                    if (title.value.isBlank()) {
+                        out.append(m.groupValues[1].replaceFirstChar { it.uppercase() })
+                    } else {
+                        inline(at + title.range.first, at + title.range.last + 1)
+                    }
                     styled(s, out.length, Style.Bold)
                     finishLine(lineStart, level, hanging, quote = true)
                     return
@@ -181,9 +281,14 @@ object NoteMarkdown {
                 return
             }
 
-            LIST_ITEM.matchAt(rest, 0)?.let { m ->
-                val indent = m.groupValues[1].fold(0) { acc, c -> acc + if (c == '\t') 4 else 1 }
-                val depth = indent / 2
+            val item = LIST_ITEM.matchAt(rest, 0)
+            // Un párrafo sin sangría termina las listas.
+            if (item == null && rest.isNotEmpty() && !rest[0].isWhitespace()) listColumns.clear()
+            item?.let { m ->
+                val column = m.groupValues[1].fold(0) { acc, c -> acc + if (c == '\t') 4 else 1 }
+                while (listColumns.isNotEmpty() && listColumns.last() > column) listColumns.removeAt(listColumns.lastIndex)
+                if (listColumns.isEmpty() || listColumns.last() < column) listColumns += column
+                val depth = listColumns.size - 1
                 val bullet = m.groupValues[2]
                 val task = m.groupValues[3]
                 level += depth + 1
@@ -261,8 +366,12 @@ object NoteMarkdown {
                 c == '`' -> codeSpan(i, to)?.let { return it }
                 c == '%' && next == '%' -> {
                     val close = src.indexOf("%%", i + 2)
-                    return if (close in 0 until to) close + 2 else to
+                    if (close in 0 until to) return close + 2
+                    // Sigue en las líneas de abajo.
+                    commentOpened = true
+                    return to
                 }
+                c == '$' -> math(i, to)?.let { return it }
                 c == '<' -> autolink(i, to)?.let { return it }
                 c == '!' && next == '[' -> markdownLink(i + 1, to, image = true)?.let { return it }
                 c == '[' -> markdownLink(i, to, image = false)?.let { return it }
@@ -271,6 +380,39 @@ object NoteMarkdown {
             }
             out.append(c)
             return i + 1
+        }
+
+        /**
+         * Una fórmula en la línea, tal cual: `$$…$$`, o `$…$` sin espacio tras
+         * el que abre ni antes del que cierra, que no cierra con `$` y un
+         * dígito (`$5`), como en [TagScanner].
+         */
+        private fun math(at: Int, to: Int): Int? {
+            if (at + 1 < to && src[at + 1] == '$') {
+                val close = src.indexOf("$$", at + 2)
+                if (close < 0 || close + 2 > to) return null
+                out.append(src, at, close + 2)
+                return close + 2
+            }
+            val content = at + 1
+            if (content >= to || src[content].isWhitespace()) return null
+            var i = content
+            while (i < to) {
+                when {
+                    src[i] == '\\' && i + 1 < to -> i += 2
+                    src[i] == '$' -> {
+                        val closes = i > content && !src[i - 1].isWhitespace() &&
+                            !(i + 1 < src.length && src[i + 1] in '0'..'9')
+                        if (closes) {
+                            out.append(src, at, i + 1)
+                            return i + 1
+                        }
+                        i++
+                    }
+                    else -> i++
+                }
+            }
+            return null
         }
 
         /** Lo que se ve de `[[destino|alias]]`: el alias o, sin él, el destino. */
@@ -386,6 +528,9 @@ object NoteMarkdown {
             val destination = if (inside.startsWith("<")) {
                 inside.substringAfter('<').substringBefore('>')
             } else {
+                // Tras el destino solo puede ir un título: `(destino "título")`.
+                val title = inside.substringAfter(' ', "").trimStart()
+                if (title.isNotEmpty() && title[0] !in "\"'(") return null
                 inside.substringBefore(' ')
             }
             val s = out.length
@@ -417,7 +562,13 @@ object NoteMarkdown {
             } catch (_: IllegalArgumentException) {
                 path
             }
-            val target = decoded.removePrefix("./").removePrefix("/")
+            // Sin `../`: la nota se busca por su nombre o el final de su ruta.
+            var target = decoded
+            while (true) {
+                val shorter = target.removePrefix("./").removePrefix("../").removePrefix("/")
+                if (shorter == target) break
+                target = shorter
+            }
             return target.ifBlank { null }
         }
 
@@ -526,7 +677,7 @@ object NoteMarkdown {
     private val HEADINGS = listOf(Style.Heading1, Style.Heading2, Style.Heading3, Style.Heading4, Style.Heading5, Style.Heading6)
     private val HEADING = Regex("^ {0,3}(#{1,6})(?:[ \\t]+|$)")
     private val RULE = Regex("^ {0,3}([-*_])(?:[ \\t]*\\1){2,}[ \\t]*$")
-    private val LIST_ITEM = Regex("^([ \\t]*)([-*+]|\\d{1,9}[.)])[ \\t]+(\\[[ xX]\\][ \\t]+)?")
+    private val LIST_ITEM = Regex("^([ \\t]*)([-*+]|\\d{1,9}[.)])[ \\t]+(\\[[ xX]\\](?:[ \\t]+|$))?")
     private val CALLOUT = Regex("^\\[!([^\\]]+)\\][+-]?[ \\t]*(.*)$")
     private val SCHEME = Regex("^[A-Za-z][A-Za-z0-9+.-]{1,31}:(?://)?[^\\s]")
     private val EMAIL = Regex("^[^\\s@<>]+@[^\\s@<>]+\\.[^\\s@<>]+$")
