@@ -278,4 +278,16 @@ class NoteMarkdownTest {
             for (i in r.indents) assert(i.start <= i.end && i.end <= r.text.length) { "$md: $i" }
         }
     }
+
+    @Test
+    fun `miles de links o énfasis anidados no agotan la pila`() {
+        // Con 5000 `[` seguidos, NoteMarkdown se llamaba a sí mismo una vez por
+        // cada uno y la vista de la nota cerraba la app con StackOverflowError.
+        val links = "[".repeat(5000) + "x" + "](y)".repeat(5000)
+        assert(render(links).text.isNotEmpty())
+        val emphasis = "*_".repeat(5000) + "x" + "_*".repeat(5000)
+        assert(render(emphasis).text.contains('x'))
+        // Por dentro del límite, igual que siempre.
+        assertEquals("a", text("[".repeat(10) + "a" + "](b.md)".repeat(10)))
+    }
 }

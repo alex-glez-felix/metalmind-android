@@ -336,11 +336,26 @@ object NoteMarkdown {
             is TagScanner.Link -> Link(start, end, m.target)
         }
 
-        /** El texto de [from] a [to] sin las marcas en línea. */
+        /** Cuántos `inline` hay abiertos uno dentro de otro (énfasis y links anidados). */
+        private var nesting = 0
+
+        /**
+         * El texto de [from] a [to] sin las marcas en línea. Pasados
+         * [MAX_NESTING] niveles, tal cual: miles de `[` seguidos agotaban la pila.
+         */
         private fun inline(from: Int, to: Int) {
-            var i = from
-            while (i < to) {
-                i = inlineStep(i, to)
+            if (nesting >= MAX_NESTING) {
+                out.append(src, from, to)
+                return
+            }
+            nesting++
+            try {
+                var i = from
+                while (i < to) {
+                    i = inlineStep(i, to)
+                }
+            } finally {
+                nesting--
             }
         }
 
@@ -674,6 +689,7 @@ object NoteMarkdown {
     }
 
     private const val RULE_WIDTH = 24
+    private const val MAX_NESTING = 32
     private val HEADINGS = listOf(Style.Heading1, Style.Heading2, Style.Heading3, Style.Heading4, Style.Heading5, Style.Heading6)
     private val HEADING = Regex("^ {0,3}(#{1,6})(?:[ \\t]+|$)")
     private val RULE = Regex("^ {0,3}([-*_])(?:[ \\t]*\\1){2,}[ \\t]*$")
