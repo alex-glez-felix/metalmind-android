@@ -197,9 +197,11 @@ class SearchState(
 @Composable
 fun rememberSearchState(tree: Uri): SearchState {
     val context = LocalContext.current
-    val field = rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue()) }
-    val selected = rememberSaveable { mutableStateOf<String?>(null) }
-    val opened = rememberSaveable { mutableStateOf(listOf<String>()) }
+    // Con la carpeta: al cambiarla, lo buscado y las notas abiertas eran del
+    // vault anterior (la nota abierta saldría como que ya no está).
+    val field = rememberSaveable(tree, stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue()) }
+    val selected = rememberSaveable(tree) { mutableStateOf<String?>(null) }
+    val opened = rememberSaveable(tree) { mutableStateOf(listOf<String>()) }
     val state = remember(tree) { SearchState(field, selected, opened) }
     // Al volver a la app (y al guardar, con refresh()) se relee lo que cambió:
     // con dos paneles la búsqueda vive tanto como la captura.
