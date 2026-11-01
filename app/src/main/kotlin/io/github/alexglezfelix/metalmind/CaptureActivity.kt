@@ -9,6 +9,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -181,6 +182,8 @@ private fun CaptureScreen(settings: VaultSettings, initialText: String, onSaved:
             saving = false
             when (outcome) {
                 is Outcome.Saved -> {
+                    // La nota nueva, en la búsqueda (con dos paneles se ve enseguida).
+                    search.refresh()
                     val message = savedFormat.format(outcome.name)
                     if (onSaved != null) {
                         Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
@@ -252,6 +255,9 @@ private fun CaptureScreen(settings: VaultSettings, initialText: String, onSaved:
 
     val layout = rememberPaneLayout()
     if (!layout.twoPanes) {
+        // Si la ventana se achicó con una nota abierta, en un panel no se vería
+        // y Atrás cerraría la app: se cierra.
+        if (search.opened.isNotEmpty()) LaunchedEffect(Unit) { search.closeNotes() }
         CapturePane(
             onSearch = { context.startActivity(Intent(context, SearchActivity::class.java)) },
             showSearch = true,
@@ -296,9 +302,15 @@ private fun CaptureScreen(settings: VaultSettings, initialText: String, onSaved:
             modifier = Modifier.width(layout.listWidth),
         )
         VerticalDivider()
-        Box(Modifier.weight(1f)) {
-            if (search.openNote != null) {
+        // Enfocable: al tocar un resultado, el campo de la captura desaparece
+        // y nada queda enfocado, así que los atajos del Row no llegarían. El
+        // foco pasa aquí, salvo que esté en la búsqueda (sus flechas).
+        val noteFocus = remember { FocusRequester() }
+        Box(Modifier.weight(1f).focusRequester(noteFocus).focusable()) {
+            val open = search.openNote
+            if (open != null) {
                 OpenNote(search)
+                LaunchedEffect(open) { if (!search.fieldFocused) noteFocus.requestFocus() }
             } else {
                 CapturePane(
                     onSearch = { search.fieldFocus.requestFocus() },

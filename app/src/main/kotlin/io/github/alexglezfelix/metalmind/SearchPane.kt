@@ -34,6 +34,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -43,6 +45,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -62,6 +65,8 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import io.github.alexglezfelix.metalmind.core.SearchHit
 import io.github.alexglezfelix.metalmind.core.TagCompletion
 import io.github.alexglezfelix.metalmind.core.VaultIndex
@@ -76,7 +81,11 @@ import kotlinx.coroutines.withContext
  * captura.
  */
 @Stable
-class SearchState(fieldState: MutableState<TextFieldValue>) {
+class SearchState(
+    fieldState: MutableState<TextFieldValue>,
+    selectedState: MutableState<String?>,
+    openedState: MutableState<List<String>>,
+) {
     /** `null` mientras se lee la caché; después, al día con el vault. */
     var index by mutableStateOf<VaultIndex?>(null)
         private set
@@ -90,20 +99,33 @@ class SearchState(fieldState: MutableState<TextFieldValue>) {
     var hits by mutableStateOf(emptyList<SearchHit>())
         private set
 
-    /** El resultado marcado con las flechas (o el último abierto desde la lista). */
-    var selected by mutableStateOf<String?>(null)
+    /** El resultado marcado: con las flechas o, con dos paneles, el que se ve a la derecha. */
+    var selected by selectedState
         private set
 
     /** Las notas abiertas, de la primera a la que se ve: atrás vuelve a la anterior. */
-    var opened by mutableStateOf(listOf<String>())
+    var opened by openedState
         private set
     val openNote: String? get() = opened.lastOrNull()
 
     val fieldFocus = FocusRequester()
+
+    /** Si el foco está en el campo de búsqueda (ahí las flechas recorren la lista). */
+    var fieldFocused by mutableStateOf(false)
+        internal set
     val snackbar = SnackbarHostState()
 
+    /** Cuántas veces se pidió releer el vault (al volver a la app, al guardar). */
+    internal var refreshes by mutableIntStateOf(0)
+        private set
+
+    /** Releer el vault: solo las notas que cambiaron. */
+    fun refresh() {
+        refreshes++
+    }
+
     internal suspend fun load(context: Context, tree: Uri) {
-        index = Vaults.cached(context, tree)
+        if (index == null) index = Vaults.cached(context, tree)
         try {
             index = Vaults.refresh(context, tree)
         } catch (e: CancellationException) {
@@ -111,7 +133,10 @@ class SearchState(fieldState: MutableState<TextFieldValue>) {
         } catch (_: Exception) {
             // Sin acceso a la carpeta o con el proveedor fallando, se busca en lo de la caché.
             readFailed = true
+            reading = false
+            return
         }
+        readFailed = false
         reading = false
     }
 
@@ -125,9 +150,13 @@ class SearchState(fieldState: MutableState<TextFieldValue>) {
         field = value
     }
 
-    /** Abre una nota desde la lista: reemplaza las que hubiera abiertas. */
-    fun show(id: String) {
-        selected = id
+    /**
+     * Abre una nota desde la lista: reemplaza las que hubiera abiertas. Con
+     * [mark] queda marcada (con dos paneles, es la que se ve a la derecha);
+     * en un panel no, para que Enter siga abriendo el primero.
+     */
+    fun show(id: String, mark: Boolean) {
+        if (mark) selected = id
         opened = listOf(id)
     }
 
@@ -158,7 +187,7 @@ class SearchState(fieldState: MutableState<TextFieldValue>) {
     /** Mueve la marca con las flechas; con dos paneles, la nota se ve a la derecha. */
     fun move(delta: Int, showRight: Boolean) {
         val next = Panes.step(hits.map { it.id }, selected, delta) ?: return
-        if (showRight) show(next) else selected = next
+        if (showRight) show(next, mark = true) else selected = next
     }
 
     /** Lo que abre Enter: el marcado si sigue en la lista, si no el primero. */
@@ -169,8 +198,13 @@ class SearchState(fieldState: MutableState<TextFieldValue>) {
 fun rememberSearchState(tree: Uri): SearchState {
     val context = LocalContext.current
     val field = rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue()) }
-    val state = remember(tree) { SearchState(field) }
-    LaunchedEffect(state) { state.load(context, tree) }
+    val selected = rememberSaveable { mutableStateOf<String?>(null) }
+    val opened = rememberSaveable { mutableStateOf(listOf<String>()) }
+    val state = remember(tree) { SearchState(field, selected, opened) }
+    // Al volver a la app (y al guardar, con refresh()) se relee lo que cambió:
+    // con dos paneles la búsqueda vive tanto como la captura.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { state.refresh() }
+    LaunchedEffect(state, state.refreshes) { state.load(context, tree) }
     return state
 }
 
@@ -200,7 +234,7 @@ fun SearchPane(
 
     fun open(id: String) {
         keyboard?.hide()
-        state.show(id)
+        state.show(id, mark = twoPanes)
     }
 
     Scaffold(
@@ -215,6 +249,7 @@ fun SearchPane(
                         onSubmit = { state.submitTarget()?.let(::open) },
                         onMove = { state.move(it, showRight = twoPanes) },
                         focus = state.fieldFocus,
+                        onFocusChange = { state.fieldFocused = it },
                         autoFocus = autoFocus,
                     )
                 },
@@ -237,19 +272,22 @@ fun SearchPane(
             state.hits.isEmpty() -> stringResource(R.string.search_no_results)
             else -> null
         }
-        // Resultados nuevos, desde arriba (si no, la lista sigue al que estaba
-        // primero); con las flechas, el marcado siempre a la vista.
+        // Con algo marcado, que se vea; si no, los resultados desde arriba (si
+        // no, al cambiar, la lista sigue al que estaba primero y queda a media
+        // altura). Un solo efecto: si el índice se actualiza con un resultado
+        // marcado, la lista no salta al tope.
         val list = rememberLazyListState()
         val hits = state.hits
-        LaunchedEffect(hits) { list.scrollToItem(0) }
         val marked = hits.indexOfFirst { it.id == state.selected }
-        LaunchedEffect(marked) {
-            if (marked < 0) return@LaunchedEffect
-            val row = marked + if (status != null) 1 else 0
+        LaunchedEffect(hits, marked) {
+            if (marked < 0) {
+                list.scrollToItem(0)
+                return@LaunchedEffect
+            }
             val info = list.layoutInfo
-            val item = info.visibleItemsInfo.firstOrNull { it.index == row }
+            val item = info.visibleItemsInfo.firstOrNull { it.index == marked }
             when {
-                item == null -> list.animateScrollToItem(row)
+                item == null -> list.animateScrollToItem(marked)
                 item.offset < 0 -> list.animateScrollBy(item.offset.toFloat())
                 item.offset + item.size > info.viewportEndOffset ->
                     list.animateScrollBy((item.offset + item.size - info.viewportEndOffset).toFloat())
@@ -279,16 +317,19 @@ fun OpenNote(state: SearchState, modifier: Modifier = Modifier) {
     val id = state.openNote ?: return
     val scope = rememberCoroutineScope()
     val missingFormat = stringResource(R.string.link_missing)
-    NoteScreen(
-        note = state.index?.note(id),
-        onBack = { state.back() },
-        onTag = state::searchTag,
-        onLink = { target ->
-            if (!state.follow(target)) scope.launch { state.snackbar.showSnackbar(missingFormat.format(target)) }
-        },
-        snackbar = state.snackbar,
-        modifier = modifier,
-    )
+    // Otra nota, desde arriba: sin la clave, el scroll de la anterior se queda.
+    key(id) {
+        NoteScreen(
+            note = state.index?.note(id),
+            onBack = { state.back() },
+            onTag = state::searchTag,
+            onLink = { target ->
+                if (!state.follow(target)) scope.launch { state.snackbar.showSnackbar(missingFormat.format(target)) }
+            },
+            snackbar = state.snackbar,
+            modifier = modifier,
+        )
+    }
 }
 
 /** El panel derecho de la búsqueda cuando todavía no se abrió ninguna nota. */
@@ -312,6 +353,7 @@ private fun SearchField(
     onSubmit: () -> Unit,
     onMove: (Int) -> Unit,
     focus: FocusRequester,
+    onFocusChange: (Boolean) -> Unit,
     autoFocus: Boolean,
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
@@ -345,6 +387,7 @@ private fun SearchField(
         modifier = Modifier
             .fillMaxWidth()
             .focusRequester(focus)
+            .onFocusChanged { onFocusChange(it.isFocused) }
             .onPreviewKeyEvent {
                 // Con teclado físico, las flechas recorren los resultados.
                 if (it.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
