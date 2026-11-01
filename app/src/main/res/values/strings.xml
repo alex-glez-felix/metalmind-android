@@ -30,4 +30,5 @@
     <string name="format_list">Lista</string>
     <string name="format_checkbox">Casilla</string>
     <string name="format_code">Código</string>
+    <string name="url_no_app">No hay ninguna app para abrir %1$s</string>
 </resources>
