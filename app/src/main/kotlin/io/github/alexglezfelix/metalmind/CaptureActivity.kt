@@ -72,6 +72,7 @@ import io.github.alexglezfelix.metalmind.core.CaptureResult
 import io.github.alexglezfelix.metalmind.core.LinkCompletion
 import io.github.alexglezfelix.metalmind.core.SharedText
 import io.github.alexglezfelix.metalmind.core.TagCompletion
+import io.github.alexglezfelix.metalmind.core.Transcript
 import io.github.alexglezfelix.metalmind.core.VaultIndex
 import java.time.LocalDateTime
 import kotlin.coroutines.cancellation.CancellationException
@@ -85,11 +86,13 @@ class CaptureActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val settings = VaultSettings(applicationContext)
         val shared = sharedText(intent)
+        val voice = intent.action == ACTION_VOICE
         setContent {
             MetalmindTheme {
                 CaptureScreen(
                     settings = settings,
                     initialText = shared.orEmpty(),
+                    startVoice = voice,
                     // Al compartir, guardar devuelve a la app de donde se vino.
                     onSaved = if (shared != null) ({ finish() }) else null,
                 )
@@ -105,6 +108,11 @@ class CaptureActivity : ComponentActivity() {
             text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT),
         )
     }
+
+    companion object {
+        /** El atajo "Nota de voz" del lanzador: abre la captura grabando. */
+        const val ACTION_VOICE = "io.github.alexglezfelix.metalmind.VOZ"
+    }
 }
 
 /** Lo que pasó al guardar, ya listo para mostrar. */
@@ -116,7 +124,7 @@ private sealed interface Outcome {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CaptureScreen(settings: VaultSettings, initialText: String, onSaved: (() -> Unit)?) {
+private fun CaptureScreen(settings: VaultSettings, initialText: String, startVoice: Boolean, onSaved: (() -> Unit)?) {
     val context = LocalContext.current
     var folder by remember { mutableStateOf(settings.folder) }
     // Con el cursor al final, para seguir escribiendo después de lo compartido.
@@ -157,6 +165,17 @@ private fun CaptureScreen(settings: VaultSettings, initialText: String, onSaved:
     // Preparar las notas para `[[` fuera del hilo principal, antes de que se escriba.
     LaunchedEffect(tags) { withContext(Dispatchers.Default) { tags.linkSuggestions("", 1) } }
 
+    // La nota de voz: lo transcrito va donde está el cursor.
+    val voice = rememberVoiceCapture(
+        onText = { transcript ->
+            val done = Transcript.insert(field.text, field.selection.start, field.selection.end, transcript)
+            field = TextFieldValue(done.text, TextRange(done.cursor))
+        },
+        onMessage = { message -> scope.launch { snackbar.showSnackbar(message, duration = SnackbarDuration.Long) } },
+    )
+    VoiceDialogs(voice)
+    if (startVoice) LaunchedEffect(Unit) { voice.mic() }
+
     val savedFormat = stringResource(R.string.saved)
     val writeErrorFormat = stringResource(R.string.error_write)
     val nameTakenFormat = stringResource(R.string.error_name_taken)
@@ -168,7 +187,10 @@ private fun CaptureScreen(settings: VaultSettings, initialText: String, onSaved:
         scope.launch {
             val outcome = withContext(Dispatchers.IO) {
                 try {
-                    when (val r = Capture.save(SafNoteFolder(context.contentResolver, current), toSave, LocalDateTime.now())) {
+                    // Primero los audios que enlaza: si fallan, la nota no queda
+                    // apuntando a nada.
+                    val final = voice.attachments.saveFor(context.contentResolver, current, toSave)
+                    when (val r = Capture.save(SafNoteFolder(context.contentResolver, current), final, LocalDateTime.now())) {
                         is CaptureResult.Saved -> Outcome.Saved(r.name)
                         is CaptureResult.NameTaken -> Outcome.Failed(nameTakenFormat.format(r.stem))
                         CaptureResult.Empty -> null
@@ -220,6 +242,7 @@ private fun CaptureScreen(settings: VaultSettings, initialText: String, onSaved:
                     title = { Text(SafNoteFolder.label(current), maxLines = 1) },
                     actions = {
                         // Con dos paneles la búsqueda ya está a la izquierda.
+                        VoiceButton(voice)
                         if (showSearch) {
                             IconButton(onClick = onSearch) {
                                 Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.search))

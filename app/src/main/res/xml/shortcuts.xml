@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Mantener pulsado el ícono de la app: "Nota de voz" abre la captura grabando. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:enabled="true"
+        android:icon="@mipmap/ic_shortcut_voice"
+        android:shortcutId="voz"
+        android:shortcutShortLabel="@string/voice_shortcut">
+        <intent
+            android:action="io.github.alexglezfelix.metalmind.VOZ"
+            android:targetClass="io.github.alexglezfelix.metalmind.CaptureActivity"
+            android:targetPackage="io.github.alexglezfelix.metalmind" />
+    </shortcut>
+</shortcuts>
