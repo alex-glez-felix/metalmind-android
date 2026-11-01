@@ -4,16 +4,20 @@ import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -34,6 +38,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -136,30 +141,18 @@ private fun CaptureScreen(settings: VaultSettings, initialText: String, onSaved:
         return
     }
 
-    // Los tags del vault: primero los de la caché, enseguida; después, al día.
-    var tags by remember(current) { mutableStateOf(VaultIndex.EMPTY) }
-    LaunchedEffect(current) {
-        tags = Vaults.cached(context, current)
-        try {
-            tags = Vaults.refresh(context, current)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (_: Exception) {
-            // Las sugerencias son opcionales: sin acceso a la carpeta, si ya no
-            // existe o si el proveedor falla, quedan las de la caché, y el
-            // guardado dirá lo que haga falta.
-        }
-    }
+    // El índice del vault (los tags y, con dos paneles, la búsqueda): primero
+    // el de la caché, enseguida; después, al día. Si no se puede leer la
+    // carpeta, quedan los de la caché y el guardado dirá lo que haga falta.
+    val search = rememberSearchState(current)
+    val tags = search.index ?: VaultIndex.EMPTY
+    val captureFocus = remember { FocusRequester() }
     val query = if (field.selection.collapsed) TagCompletion.at(text, field.selection.end) else null
     val suggestions = remember(query, tags) { query?.let { tags.suggestions(it.prefix) }.orEmpty() }
 
     val savedFormat = stringResource(R.string.saved)
     val writeErrorFormat = stringResource(R.string.error_write)
     val nameTakenFormat = stringResource(R.string.error_name_taken)
-
-    fun search() {
-        context.startActivity(Intent(context, SearchActivity::class.java))
-    }
 
     fun save() {
         if (saving || text.isBlank()) return
@@ -209,46 +202,120 @@ private fun CaptureScreen(settings: VaultSettings, initialText: String, onSaved:
         }
     }
 
-    Scaffold(
-        modifier = Modifier.imePadding(),
-        topBar = {
-            TopAppBar(
-                title = { Text(SafNoteFolder.label(current), maxLines = 1) },
-                actions = {
-                    IconButton(onClick = ::search) {
-                        Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.search))
+    @Composable
+    fun CapturePane(onSearch: () -> Unit, showSearch: Boolean, modifier: Modifier) {
+        Scaffold(
+            modifier = modifier,
+            topBar = {
+                TopAppBar(
+                    title = { Text(SafNoteFolder.label(current), maxLines = 1) },
+                    actions = {
+                        // Con dos paneles la búsqueda ya está a la izquierda.
+                        if (showSearch) {
+                            IconButton(onClick = onSearch) {
+                                Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.search))
+                            }
+                        }
+                        TextButton(onClick = { picker.launch(current) }) {
+                            Text(stringResource(R.string.change_folder))
+                        }
+                    },
+                )
+            },
+            snackbarHost = { SnackbarHost(snackbar) },
+            bottomBar = {
+                if (query != null && suggestions.isNotEmpty()) {
+                    TagSuggestions(suggestions) { picked ->
+                        val done = TagCompletion.accept(text, query, picked.name)
+                        field = TextFieldValue(done.text, TextRange(done.cursor))
                     }
-                    TextButton(onClick = { picker.launch(current) }) {
-                        Text(stringResource(R.string.change_folder))
+                }
+            },
+            floatingActionButton = {
+                if (text.isNotBlank()) {
+                    FloatingActionButton(onClick = ::save) {
+                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = stringResource(R.string.save))
                     }
-                },
+                }
+            },
+        ) { padding ->
+            CaptureField(
+                value = field,
+                onValueChange = { field = it },
+                onSave = ::save,
+                onSearch = onSearch,
+                focus = captureFocus,
+                modifier = Modifier.padding(padding).fillMaxSize(),
             )
-        },
-        snackbarHost = { SnackbarHost(snackbar) },
-        bottomBar = {
-            if (query != null && suggestions.isNotEmpty()) {
-                TagSuggestions(suggestions) { picked ->
-                    val done = TagCompletion.accept(text, query, picked.name)
-                    field = TextFieldValue(done.text, TextRange(done.cursor))
-                }
-            }
-        },
-        floatingActionButton = {
-            if (text.isNotBlank()) {
-                FloatingActionButton(onClick = ::save) {
-                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = stringResource(R.string.save))
-                }
-            }
-        },
-    ) { padding ->
-        CaptureField(
-            value = field,
-            onValueChange = { field = it },
-            onSave = ::save,
-            onSearch = ::search,
-            modifier = Modifier.padding(padding).fillMaxSize(),
-        )
+        }
     }
+
+    val layout = rememberPaneLayout()
+    if (!layout.twoPanes) {
+        CapturePane(
+            onSearch = { context.startActivity(Intent(context, SearchActivity::class.java)) },
+            showSearch = true,
+            modifier = Modifier.imePadding(),
+        )
+        return
+    }
+
+    // Dos paneles: la búsqueda a la izquierda; a la derecha la nota abierta
+    // o, si no hay ninguna, la captura.
+    BackHandler(enabled = search.opened.isNotEmpty()) { search.back() }
+    Row(
+        modifier = Modifier
+            .imePadding()
+            .fillMaxSize()
+            .onPreviewKeyEvent {
+                if (it.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                when {
+                    // Ctrl+K a la búsqueda, Ctrl+N a una nota nueva. Esc
+                    // cierra la nota abierta o vuelve a la captura, nunca
+                    // la app (sin manejarlo, Android lo toma como atrás).
+                    it.key == Key.K && it.isCtrlPressed -> search.fieldFocus.requestFocus()
+                    it.key == Key.N && it.isCtrlPressed -> toCapture(search, captureFocus)
+                    it.key == Key.Escape -> if (!search.back()) captureFocus.requestFocus()
+                    else -> return@onPreviewKeyEvent false
+                }
+                true
+            },
+    ) {
+        SearchPane(
+            search,
+            twoPanes = true,
+            // Sin a dónde volver: la lupa dice qué es el campo.
+            navigationIcon = {
+                Icon(
+                    Icons.Filled.Search,
+                    contentDescription = null,
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                )
+            },
+            autoFocus = false,
+            modifier = Modifier.width(layout.listWidth),
+        )
+        VerticalDivider()
+        Box(Modifier.weight(1f)) {
+            if (search.openNote != null) {
+                OpenNote(search)
+            } else {
+                CapturePane(
+                    onSearch = { search.fieldFocus.requestFocus() },
+                    showSearch = false,
+                    modifier = Modifier,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * A la captura: cierra las notas abiertas. El campo pide el foco solo al
+ * volver a aparecer; si ya se veía, se lo da aquí.
+ */
+private fun toCapture(search: SearchState, captureFocus: FocusRequester) {
+    if (search.openNote != null) search.closeNotes() else captureFocus.requestFocus()
 }
 
 @Composable
@@ -257,9 +324,9 @@ private fun CaptureField(
     onValueChange: (TextFieldValue) -> Unit,
     onSave: () -> Unit,
     onSearch: () -> Unit,
+    focus: FocusRequester,
     modifier: Modifier = Modifier,
 ) {
-    val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     LaunchedEffect(Unit) {
         focus.requestFocus()
@@ -270,7 +337,7 @@ private fun CaptureField(
         onValueChange = onValueChange,
         placeholder = { Text(stringResource(R.string.placeholder)) },
         // La tecla de acción del teclado guarda; con teclado físico, Ctrl+Enter.
-        // Ctrl+K abre la búsqueda.
+        // Ctrl+K abre la búsqueda (con dos paneles, va a su campo).
         keyboardOptions = KeyboardOptions(
             capitalization = KeyboardCapitalization.Sentences,
             imeAction = ImeAction.Send,
