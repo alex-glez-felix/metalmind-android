@@ -41,11 +41,49 @@ void log_to_logcat(ggml_log_level level, const char * text, void *) {
 
 }  // namespace
 
-extern "C" JNIEXPORT void JNICALL
+/**
+ * Carga la mejor variante de CPU de ggml y devuelve, para el log, si el código
+ * nativo se compiló optimizado (sin optimizar, whisper va decenas de veces más
+ * lento: issue #17) y qué instrucciones usa la variante elegida. El nombre del
+ * archivo de la variante lo escribe ggml en el log ("load_backend: loaded CPU
+ * backend from …").
+ */
+extern "C" JNIEXPORT jstring JNICALL
 Java_io_github_alexglezfelix_metalmind_WhisperNative_loadBackends(JNIEnv * env, jclass, jstring dir) {
     ggml_log_set(log_to_logcat, nullptr);
     whisper_log_set(log_to_logcat, nullptr);
     ggml_backend_load_all_from_path(utf8(env, dir).c_str());
+
+#if defined(__OPTIMIZE__)
+    std::string info = "optimizado";
+#else
+    std::string info = "SIN OPTIMIZAR";
+#endif
+    ggml_backend_dev_t cpu = ggml_backend_dev_by_type(GGML_BACKEND_DEVICE_TYPE_CPU);
+    if (cpu == nullptr) return env->NewStringUTF((info + ", sin CPU de ggml").c_str());
+    ggml_backend_reg_t reg = ggml_backend_dev_backend_reg(cpu);
+    const char * description = ggml_backend_dev_description(cpu);
+    info += ", ";
+    info += description != nullptr ? description : "CPU";
+    auto features = reinterpret_cast<ggml_backend_get_features_t>(
+        ggml_backend_reg_get_proc_address(reg, "ggml_backend_get_features"));
+    if (features != nullptr) {
+        info += ":";
+        for (const ggml_backend_feature * f = features(reg); f->name != nullptr; ++f) {
+            info += ' ';
+            info += f->name;
+            if (f->value != nullptr && std::string(f->value) != "1") {
+                info += '=';
+                info += f->value;
+            }
+        }
+    }
+    // La descripción viene del sistema: con algo que no sea ASCII,
+    // NewStringUTF podría abortar (ver transcribe).
+    for (char & c : info) {
+        if (static_cast<unsigned char>(c) >= 0x80) c = '?';
+    }
+    return env->NewStringUTF(info.c_str());
 }
 
 extern "C" JNIEXPORT jlong JNICALL

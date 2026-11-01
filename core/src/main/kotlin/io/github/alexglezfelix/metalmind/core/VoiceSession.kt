@@ -26,10 +26,17 @@ sealed interface VoiceState {
 
     data class Recording(val seconds: Int, val level: Float, val paused: Boolean) : VoiceState
 
-    data class Transcribing(val percent: Int) : VoiceState
+    /** [audioSeconds]: lo grabado, para poner el tiempo que tarda en contexto. */
+    data class Transcribing(val percent: Int, val audioSeconds: Int) : VoiceState
 
-    /** Listo: [text] va al campo de captura; [audio], si se quiere guardar. */
-    class Done(val text: String, val audio: ShortArray) : VoiceState
+    /**
+     * Listo: [text] va al campo de captura; [audio], si se quiere guardar.
+     * [millis] es lo que se esperó desde que se dejó de grabar (cargar el
+     * modelo y whisper), para saber si el teléfono va bien con ese modelo.
+     */
+    class Done(val text: String, val audio: ShortArray, val millis: Long) : VoiceState {
+        val audioSeconds: Int get() = audio.size / VoiceRecorder.SAMPLE_RATE
+    }
 
     /** Se grabó silencio, o whisper no reconoció nada. */
     data object NothingHeard : VoiceState
@@ -46,6 +53,8 @@ class VoiceSession(
     private val newRecorder: () -> VoiceRecorder,
     private val transcriber: Transcriber,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    /** Milisegundos de un reloj monótono, para medir la transcripción. */
+    private val clock: () -> Long = { System.nanoTime() / 1_000_000 },
 ) {
     private val _state = MutableStateFlow<VoiceState>(VoiceState.Idle)
     val state: StateFlow<VoiceState> = _state.asStateFlow()
@@ -97,12 +106,15 @@ class VoiceSession(
         } ?: return VoiceState.Idle
         if (Pcm.isSilent(audio)) return VoiceState.NothingHeard
         if (cancelled) return VoiceState.Idle
-        _state.value = VoiceState.Transcribing(0)
+        val audioSeconds = audio.size / VoiceRecorder.SAMPLE_RATE
+        _state.value = VoiceState.Transcribing(0, audioSeconds)
+        val start = clock()
         val raw = transcriber.transcribe(Pcm.toFloats(audio)) { percent ->
-            _state.update { if (it is VoiceState.Transcribing) VoiceState.Transcribing(percent) else it }
+            _state.update { if (it is VoiceState.Transcribing) it.copy(percent = percent) else it }
         } ?: return VoiceState.Idle
+        val millis = clock() - start
         val text = Transcript.clean(raw)
-        return if (text.isEmpty()) VoiceState.NothingHeard else VoiceState.Done(text, audio)
+        return if (text.isEmpty()) VoiceState.NothingHeard else VoiceState.Done(text, audio, millis)
     }
 
     fun pause() {

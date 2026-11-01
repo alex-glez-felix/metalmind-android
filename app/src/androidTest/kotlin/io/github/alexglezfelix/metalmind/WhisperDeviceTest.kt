@@ -26,6 +26,8 @@ import org.junit.runner.RunWith
  * `modelo.bin` y una grabación `voz.wav` (16 kHz, mono, 16 bits) con el texto
  * de [EXPECTED]. Sin ellos, el test se salta. Ver README, "Probar la
  * transcripción en el dispositivo".
+ *
+ * Con `-e threads 6` mide con ese número de hilos en vez del que elige la app.
  */
 @RunWith(AndroidJUnit4::class)
 class WhisperDeviceTest {
@@ -65,19 +67,23 @@ class WhisperDeviceTest {
         val wav = File(dir, "voz.wav")
         assumeTrue("faltan $model o $wav", model.isFile && wav.isFile)
 
+        val threads = InstrumentationRegistry.getArguments().getString("threads")?.toInt()
         val source = WavSource(wav)
         lateinit var session: VoiceSession
         session = VoiceSession(
             scope = this,
             newRecorder = { VoiceRecorder(source).also { rec -> source.onEnd = rec::stop } },
-            transcriber = WhisperTranscriber({ model }, context.applicationInfo.nativeLibraryDir),
+            transcriber = WhisperTranscriber({ model }, context.applicationInfo.nativeLibraryDir, threads),
         )
         val start = System.nanoTime()
         session.start()
         val end = session.state.first { it !is VoiceState.Recording && it !is VoiceState.Transcribing }
         val seconds = (System.nanoTime() - start) / 1e9
         val text = (end as? VoiceState.Done)?.text ?: error("terminó en $end")
-        Log.i(TAG, "%.1f s con %s: %s".format(seconds, model.length(), text))
+        Log.i(TAG, "%.1f s con %s, %d hilos: %s".format(seconds, model.length(), threads ?: WhisperTranscriber.threads, text))
+        Log.i(TAG, "ggml: ${WhisperTranscriber.backend}")
+        // Sin optimizar, whisper tarda minutos en lo que debería tardar segundos (#17).
+        assertTrue("ggml sin optimizar: ${WhisperTranscriber.backend}", WhisperTranscriber.backend.startsWith("optimizado"))
 
         val words = EXPECTED.lowercase().split(Regex("""[^\p{L}]+""")).filter { it.length > 3 }.toSet()
         val heard = text.lowercase().split(Regex("""[^\p{L}]+""")).toSet()
