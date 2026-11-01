@@ -60,7 +60,14 @@ Toca la lupa arriba a la derecha (con teclado físico, `Ctrl+K`). Los resultados
 
 Se busca en lo que la app ya tiene en su caché (la misma de los tags, que ahora guarda también el texto), así que escribir no relee el vault: al abrir la búsqueda solo se releen las notas que cambiaron.
 
-Tocar un resultado abre la nota **solo para leer**: los encabezados y el código se distinguen, el texto se puede seleccionar y copiar, un `#tag` busca las notas con ese tag y un `[[link]]` abre la nota a la que apunta (por nombre o ruta, sin distinguir mayúsculas). Atrás, o `Esc`, vuelve a la nota anterior y luego a la búsqueda; `Ctrl+K` vuelve directo a la búsqueda.
+Tocar un resultado abre la nota **solo para leer**, con el markdown renderizado como en la vista de lectura de Obsidian: encabezados, **negrita**, *cursiva*, ~~tachado~~, `==resaltado==`, código, listas (también de tareas, `☐`/`☑`), citas y callouts, y líneas horizontales; los comentarios `%% %%` no se ven. Las tablas, fórmulas y HTML se muestran tal cual. Cada línea de la nota es una línea en pantalla, como se escribió.
+
+- Un `#tag` busca las notas con ese tag.
+- Un `[[link]]` (o `[texto](otra-nota.md)`) abre la nota a la que apunta, por nombre o ruta, sin distinguir mayúsculas. Con alias (`[[nota|texto]]`) se ve el alias.
+- Los links a la web (`[texto](https://…)`, `<https://…>` o una URL suelta) se abren en el navegador.
+- El texto se puede seleccionar y copiar (sin las marcas de markdown).
+
+Atrás, o `Esc`, vuelve a la nota anterior y luego a la búsqueda; `Ctrl+K` vuelve directo a la búsqueda.
 
 ### Tablet y pantallas grandes
 
@@ -81,7 +88,7 @@ Con teclado físico, en la captura con dos paneles (en un panel, `Ctrl+K`, `Ente
 
 - **Compartir con Metalmind**: desde cualquier app, *Compartir* → *Compartir con Metalmind* abre la captura con el texto o el link ya puestos. Con un link de un navegador, el título de la página va en la primera línea (y da el nombre del archivo) y la URL debajo. Al guardar, vuelves a la app de donde compartiste.
 - **Tile de Ajustes rápidos**: edita los Ajustes rápidos (el lápiz del panel de notificaciones) y arrastra *Nota rápida*. Con el teléfono bloqueado, primero pide desbloquear.
-- **Widget**: mantén pulsada la pantalla de inicio → *Widgets* → *Metalmind*. Es una barra que abre la captura.
+- **Widget**: mantén pulsada la pantalla de inicio → *Widgets* → *Metalmind* → *Nota rápida*. Es una barra que abre la captura.
 
 ## Instalar el APK
 
@@ -116,7 +123,7 @@ Con git funciona igual: elige la carpeta del clon (por ejemplo, la de Termux o l
 
 ## Desarrollo
 
-- `core/`: Kotlin puro, sin Android. Nombres de archivo, contenido y el "crear sin pisar", los tags, los links (`LinkCompletion`), el formato (`Formatting`), el índice del vault (`VaultIndex`) y la búsqueda (`NoteSearch`). Tests JVM: `./gradlew :core:test`.
+- `core/`: Kotlin puro, sin Android. Nombres de archivo, contenido y el "crear sin pisar", los tags, los links (`LinkCompletion`), el formato (`Formatting`), el índice del vault (`VaultIndex`), la búsqueda (`NoteSearch`) y el markdown de la vista de nota (`NoteMarkdown`). Tests JVM: `./gradlew :core:test`.
 - `app/`: la app, Jetpack Compose. Lee y escribe en la carpeta con el Storage Access Framework. Cuándo hay dos paneles y cómo se mueven las flechas por la lista están en `Panes`, con tests JVM: `./gradlew :app:testDebugUnitTest`.
 
 Licencia: GPL-3.0.
