@@ -29,6 +29,18 @@ jobs:
       - name: Build, tests y lint
         run: ./gradlew assembleDebug test lint --console=plain
 
+      # Sin optimizar, ggml va decenas de veces más lento: una nota de 30 s
+      # tardaba minutos en un teléfono (#17). El APK debug lleva el código
+      # nativo en Release (app/build.gradle.kts); esto avisa si deja de ser así.
+      - name: whisper y ggml compilados con optimización
+        run: |
+          files=$(ls app/.cxx/*/*/*/compile_commands.json)
+          for f in $files; do
+            jq -e 'length > 0 and all(.[]; .command | test(" -O[23] "))' "$f" > /dev/null \
+              || { echo "::error::$f: código nativo sin optimizar"; exit 1; }
+          done
+          echo "$(echo "$files" | wc -l) configuraciones de CMake, todas con -O2/-O3"
+
       - name: Reportes de lint y tests
         if: failure()
         uses: actions/upload-artifact@v4

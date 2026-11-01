@@ -166,4 +166,30 @@ class VoiceSessionTest {
         assertEquals(1, recorders)
         assertTrue(session.state.value is VoiceState.Done)
     }
+
+    @Test
+    fun `mide cuánto tarda la transcripción y cuánto audio era`() = runTest {
+        var now = 1_000L
+        val transcriber = FakeTranscriber { "hola" }
+        val seen = mutableListOf<VoiceState>()
+        lateinit var session: VoiceSession
+        transcriber.onTranscribe = {
+            seen += session.state.value
+            now += 9_500
+        }
+        session = VoiceSession(
+            scope = this,
+            newRecorder = { VoiceRecorder(FakePcmSource(List(30) { FakePcmSource.tone() }) { if (it == 30) session.stop() }) },
+            transcriber = transcriber,
+            io = StandardTestDispatcher(testScheduler),
+            clock = { now },
+        )
+        session.start()
+        advanceUntilIdle()
+        val done = assertIs<VoiceState.Done>(session.state.value)
+        // Solo lo que tarda whisper, no la grabación.
+        assertEquals(9_500, done.millis)
+        assertEquals(3, done.audioSeconds)
+        assertEquals(VoiceState.Transcribing(50, audioSeconds = 3), seen.single())
+    }
 }

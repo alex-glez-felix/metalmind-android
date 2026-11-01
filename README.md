@@ -90,6 +90,7 @@ El micrófono de arriba graba y pasa la voz a texto **en el teléfono, sin red**
 
 - **Grabar**: pausa, sigue y *Transcribir* (o *Descartar*). Hasta 10 minutos. La pantalla queda encendida mientras graba o transcribe; salir de la app corta la grabación.
 - **Idioma**: español, con las palabras en inglés tal como se dicen ("revisar el pull request").
+- **Cuánto tarda**: mientras transcribe se ve el tiempo que lleva y cuánto audio era; al terminar, un aviso dice cuánto tardó (*Transcrito en 0:08 (audio de 0:30)*). Si `small` tarda más que el audio, prueba `base`.
 - **Audio**: con *Guardar también el audio con la nota*, el audio (m4a, unos 240 KB por minuto) va a `adjuntos/` dentro de la carpeta elegida y la nota lo enlaza con `![[2026-11-01-093005.m4a]]`. Apagado de entrada. Si borras el enlace antes de guardar, el audio no se guarda.
 - **Atajo**: mantén pulsado el ícono de la app → *Nota de voz* abre la captura grabando.
 
@@ -117,6 +118,8 @@ Todavía no hay versiones publicadas. Cada build de CI deja el APK debug como ar
 1. En la pestaña **Actions** del repo, abre la última ejecución verde de `android` en `main`.
 2. Descarga el artefacto `metalmind-debug-apk` (un `.zip` con `app-debug.apk`) y descomprímelo.
 3. Pásalo al teléfono y ábrelo. Android pedirá permitir instalar apps de esa fuente (el navegador o el gestor de archivos): acéptalo solo para esta instalación.
+
+Todos los APK debug se firman con la misma clave (`app/debug.keystore`, que no es secreta), así que uno nuevo se instala encima del anterior sin perder el modelo ni la carpeta. Los APK de CI anteriores a esa clave estaban firmados con otra: para pasar de uno de esos a uno nuevo hay que desinstalar una vez.
 
 También por USB, con la depuración activada: `adb install app-debug.apk`.
 
@@ -146,7 +149,7 @@ Con git funciona igual: elige la carpeta del clon (por ejemplo, la de Termux o l
 - `core/`: Kotlin puro, sin Android. Nombres de archivo, contenido y el "crear sin pisar", los tags, los links (`LinkCompletion`), el formato (`Formatting`), el índice del vault (`VaultIndex`), la búsqueda (`NoteSearch`), el markdown de la vista de nota (`NoteMarkdown`) y las notas de voz (`VoiceSession`, `VoiceRecorder`, `Transcript`, `AudioAttachment`, la lista de modelos en `VoiceModels`). Tests JVM: `./gradlew :core:test`.
 - `app/`: la app, Jetpack Compose. Lee y escribe en la carpeta con el Storage Access Framework. Cuándo hay dos paneles y cómo se mueven las flechas por la lista están en `Panes`, con tests JVM: `./gradlew :app:testDebugUnitTest`.
 
-- `app/src/main/cpp/`: el puente JNI con whisper.cpp. CMake baja la versión fijada (con su SHA-256) y compila ggml con una variante por cada familia de CPU ARM (dotprod, fp16, i8mm, SVE…); al arrancar se carga la mejor que tenga el teléfono. Hace falta el NDK (`ndk;27.3.13750724`) y CMake 3.31.6 del SDK; Gradle los instala si faltan y aceptaste las licencias. Solo `arm64-v8a` (teléfonos) y `x86_64` (emulador).
+- `app/src/main/cpp/`: el puente JNI con whisper.cpp. CMake baja la versión fijada (con su SHA-256) y compila ggml con una variante por cada familia de CPU ARM (dotprod, fp16, i8mm, SVE…); al arrancar se carga la mejor que tenga el teléfono. El código nativo se compila en Release (`-O3`) también en el APK debug: sin optimizar, whisper va unas 30 veces más lento (en el emulador, 199 s contra 7 s para 24 s de audio). CI lo comprueba. Whisper usa un hilo por núcleo sin contar los pequeños (`TranscribeThreads`), nunca más que los núcleos disponibles: con un hilo de más, cada paso espera al que no tiene núcleo y tarda decenas de veces más. Hace falta el NDK (`ndk;27.3.13750724`) y CMake 3.31.6 del SDK; Gradle los instala si faltan y aceptaste las licencias. Solo `arm64-v8a` (teléfonos) y `x86_64` (emulador).
 
 ### Probar la transcripción en el dispositivo
 
@@ -157,8 +160,10 @@ D=/sdcard/Android/data/io.github.alexglezfelix.metalmind/files
 adb push ggml-small-q5_1.bin $D/modelo.bin
 adb push voz.wav $D/voz.wav   # 16 kHz, mono, 16 bits, con el texto de WhisperDeviceTest
 ./gradlew connectedDebugAndroidTest
-adb logcat -s WhisperDeviceTest   # el texto, el tiempo y cuántas palabras acertó
+adb logcat -s WhisperDeviceTest Whisper whisper   # el texto, el tiempo, cuántas palabras acertó y la variante de CPU
 ```
+
+En logcat, `Whisper` dice cuántos hilos usa, si ggml está optimizado y qué instrucciones tiene la variante elegida (`DOTPROD`, `MATMUL_INT8` = i8mm, `SVE`…); `whisper` dice de qué archivo la cargó (`load_backend: loaded CPU backend from …/libggml-cpu-android_armv8.6_1.so`). Para comparar hilos: `./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.threads=6`.
 
 Sin esos archivos, `WhisperDeviceTest` se salta. `VoiceAttachmentsDeviceTest` comprueba el m4a y, si la app ya tiene carpeta elegida, que el audio llegue a `adjuntos/`. El micrófono del emulador no recibe audio del anfitrión con PipeWire, por eso la prueba usa un WAV en lugar del micrófono; lo demás (VoiceSession, JNI, whisper) es lo mismo que en la app.
 

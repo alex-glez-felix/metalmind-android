@@ -28,7 +28,10 @@ android {
         externalNativeBuild {
             cmake {
                 // whisper, ggml y sus variantes de CPU son varias .so con C++.
-                arguments += listOf("-DANDROID_STL=c++_shared")
+                // Release también en el APK debug, que es el que publica CI:
+                // con el tipo Debug, CMake compila ggml sin optimizar (-O0) y
+                // una nota de 30 s tardaba minutos en transcribirse (#17).
+                arguments += listOf("-DANDROID_STL=c++_shared", "-DCMAKE_BUILD_TYPE=Release")
             }
         }
     }
@@ -37,6 +40,19 @@ android {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
             version = "3.31.6"
+        }
+    }
+
+    signingConfigs {
+        // La clave de debug va en el repo: sin ella, cada máquina (y cada
+        // ejecución de CI) firma con otra, y el APK de CI no se instala encima
+        // del anterior sin desinstalar, perdiendo el modelo y la carpeta. No es
+        // secreta: solo sirve para el APK debug.
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
         }
     }
 

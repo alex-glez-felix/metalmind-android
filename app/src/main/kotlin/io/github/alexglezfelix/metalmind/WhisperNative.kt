@@ -6,8 +6,11 @@ internal object WhisperNative {
         fun onProgress(percent: Int)
     }
 
-    /** Carga las variantes de CPU de ggml que haya en [dir] y se queda con la mejor. */
-    @JvmStatic external fun loadBackends(dir: String)
+    /**
+     * Carga las variantes de CPU de ggml que haya en [dir] y se queda con la
+     * mejor. Devuelve si está optimizado y qué instrucciones usa, para el log.
+     */
+    @JvmStatic external fun loadBackends(dir: String): String
 
     /** El modelo en [path], o 0 si no se pudo cargar. */
     @JvmStatic external fun open(path: String): Long

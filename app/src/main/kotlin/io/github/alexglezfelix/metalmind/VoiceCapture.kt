@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.SystemClock
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -39,6 +40,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -65,6 +67,7 @@ import io.github.alexglezfelix.metalmind.core.VoiceState
 import java.time.LocalDateTime
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -116,6 +119,7 @@ fun rememberVoiceCapture(onText: (String) -> Unit, onMessage: (String) -> Unit):
     val state by voice.session.state.collectAsState()
     val nothingHeard = stringResource(R.string.voice_nothing_heard)
     val failedFormat = stringResource(R.string.voice_failed)
+    val timeFormat = stringResource(R.string.voice_done_time)
     LaunchedEffect(state) {
         when (val s = state) {
             is VoiceState.Done -> {
@@ -133,6 +137,8 @@ fun rememberVoiceCapture(onText: (String) -> Unit, onMessage: (String) -> Unit):
                 }
                 deliver(text)
                 voice.session.dismiss()
+                // Cuánto tardó, para saber si el teléfono va bien con este modelo (#17).
+                message(timeFormat.format(clock(((s.millis + 500) / 1000).toInt()), clock(s.audioSeconds)))
             }
             VoiceState.NothingHeard -> {
                 voice.session.dismiss()
@@ -200,7 +206,7 @@ fun VoiceDialogs(voice: VoiceCapture) {
     val state by voice.session.state.collectAsState()
     when (val s = state) {
         is VoiceState.Recording -> RecordingDialog(voice, s)
-        is VoiceState.Transcribing -> TranscribingDialog(voice, s.percent)
+        is VoiceState.Transcribing -> TranscribingDialog(voice, s)
         else -> {}
     }
 }
@@ -278,14 +284,24 @@ private fun RecordingDialog(voice: VoiceCapture, state: VoiceState.Recording) {
 }
 
 @Composable
-private fun TranscribingDialog(voice: VoiceCapture, percent: Int) {
+private fun TranscribingDialog(voice: VoiceCapture, state: VoiceState.Transcribing) {
+    // El reloj corre aunque whisper tarde en avisar el primer avance.
+    val start = remember { SystemClock.elapsedRealtime() }
+    var seconds by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            seconds = (SystemClock.elapsedRealtime() - start) / 1000
+            delay(1000)
+        }
+    }
     AlertDialog(
         onDismissRequest = {},
         properties = sticky,
         title = { Text(stringResource(R.string.voice_transcribing)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                LinearProgressIndicator(progress = { percent / 100f }, modifier = Modifier.fillMaxWidth())
+                LinearProgressIndicator(progress = { state.percent / 100f }, modifier = Modifier.fillMaxWidth())
+                Text(stringResource(R.string.voice_transcribing_time, clock(seconds.toInt()), clock(state.audioSeconds)))
                 Text(stringResource(R.string.voice_transcribing_offline), style = MaterialTheme.typography.bodySmall)
             }
         },
