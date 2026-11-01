@@ -34,11 +34,26 @@ Toca la lupa arriba a la derecha (con teclado físico, `Ctrl+K`). Los resultados
 - Cada palabra tiene que estar en el título (el nombre del archivo) o en el texto de la nota, en cualquier orden y sin distinguir mayúsculas ni acentos: `reunion lunes` encuentra *Reunión del lunes*. El frontmatter no se busca.
 - `#tag` deja solo las notas con ese tag, con las mismas reglas que las sugerencias (`#rust` es `#Rust`, en el texto o en `tags:`). Al escribir `#` aparecen los tags del vault, como en la captura. Se combina con palabras: `#rust async`.
 - Primero las notas con lo buscado en el título; después, las más recientes. Sin nada escrito, las últimas que cambiaron.
-- `Enter` abre el primer resultado; `Esc` vuelve.
+- `↓` y `↑` marcan un resultado y `Enter` lo abre (sin marcar, el primero); `Esc` vuelve.
 
 Se busca en lo que la app ya tiene en su caché (la misma de los tags, que ahora guarda también el texto), así que escribir no relee el vault: al abrir la búsqueda solo se releen las notas que cambiaron.
 
 Tocar un resultado abre la nota **solo para leer**: los encabezados y el código se distinguen, el texto se puede seleccionar y copiar, un `#tag` busca las notas con ese tag y un `[[link]]` abre la nota a la que apunta (por nombre o ruta, sin distinguir mayúsculas). Atrás, o `Esc`, vuelve a la nota anterior y luego a la búsqueda; `Ctrl+K` vuelve directo a la búsqueda.
+
+### Tablet y pantallas grandes
+
+Cuando la ventana es grande en las dos direcciones (al menos 600 × 480 dp: una tablet en cualquier orientación, o una ventana dividida que quede así de grande), la app se parte en dos paneles: la búsqueda a la izquierda y, a la derecha, la nota abierta o, si no hay ninguna, la captura. Un teléfono, también acostado, sigue con un panel. La app no fija la orientación: al girar se reacomoda sin perder lo escrito ni la nota abierta. Con dos paneles, la lista se relee al volver a la app y al guardar, así la nota recién guardada ya sale.
+
+Con teclado físico, en la captura con dos paneles (en un panel, `Ctrl+K`, `Enter`, `Esc` y `Ctrl+Enter` hacen lo de siempre):
+
+| Atajo | Qué hace |
+| --- | --- |
+| `Ctrl+K` | Ir al campo de búsqueda |
+| `↓` / `↑` | En la búsqueda, recorrer los resultados; con dos paneles, cada uno se ve a la derecha |
+| `Enter` | Abrir el resultado marcado (o el primero) |
+| `Esc` | Cerrar la nota (o volver a la anterior); sin nota, volver a la captura |
+| `Ctrl+N` | Nota nueva: cierra la nota abierta y va a la captura |
+| `Ctrl+Enter` | Guardar la captura |
 
 ### Entrar más rápido
 
@@ -80,6 +95,6 @@ Con git funciona igual: elige la carpeta del clon (por ejemplo, la de Termux o l
 ## Desarrollo
 
 - `core/`: Kotlin puro, sin Android. Nombres de archivo, contenido y el "crear sin pisar", los tags, el índice del vault (`VaultIndex`) y la búsqueda (`NoteSearch`). Tests JVM: `./gradlew :core:test`.
-- `app/`: la app, Jetpack Compose. Lee y escribe en la carpeta con el Storage Access Framework.
+- `app/`: la app, Jetpack Compose. Lee y escribe en la carpeta con el Storage Access Framework. Cuándo hay dos paneles y cómo se mueven las flechas por la lista están en `Panes`, con tests JVM: `./gradlew :app:testDebugUnitTest`.
 
 Licencia: GPL-3.0.
