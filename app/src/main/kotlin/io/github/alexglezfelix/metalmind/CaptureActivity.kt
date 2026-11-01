@@ -143,9 +143,10 @@ private fun CaptureScreen(settings: VaultSettings, initialText: String, onSaved:
         return
     }
 
-    // El índice del vault (los tags, las notas para `[[` y, con dos paneles, la búsqueda): primero
-    // el de la caché, enseguida; después, al día. Si no se puede leer la
-    // carpeta, quedan los de la caché y el guardado dirá lo que haga falta.
+    // El índice del vault (los tags, las notas para `[[` y, con dos paneles,
+    // la búsqueda): primero el de la caché, enseguida; después, al día. Si no
+    // se puede leer la carpeta, quedan los de la caché y el guardado dirá lo
+    // que haga falta.
     val search = rememberSearchState(current)
     val tags = search.index ?: VaultIndex.EMPTY
     val captureFocus = remember { FocusRequester() }
