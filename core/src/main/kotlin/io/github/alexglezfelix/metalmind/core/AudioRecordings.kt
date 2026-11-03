@@ -18,6 +18,13 @@ object AudioRecordings {
     const val FOLDER = "recordings"
 
     const val EXTENSION = ".m4a"
+
+    /**
+     * Se le añade al nombre mientras se codifica: si el proceso muere a mitad,
+     * el archivo no es un audio ([isAudio]) y nunca llega al vault.
+     */
+    const val PARTIAL_SUFFIX = ".part"
+
     private val STAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd-HHmmss")
 
     /**

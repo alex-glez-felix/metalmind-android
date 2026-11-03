@@ -29,15 +29,20 @@ class VoiceRecordings(context: Context, private val folder: () -> Uri?) : AudioS
     override fun save(samples: ShortArray): String {
         pendingDir.mkdirs()
         val local = File(pendingDir, AudioRecordings.fileName(LocalDateTime.now(), pendingDir.list().orEmpty().toList()))
+        val partial = File(pendingDir, local.name + AudioRecordings.PARTIAL_SUFFIX)
         try {
-            M4aEncoder.encode(samples, local)
+            M4aEncoder.encode(samples, partial)
         } catch (e: Exception) {
-            local.delete()
+            partial.delete()
             throw e
         }
         try {
-            val tree = folder() ?: throw IOException("no hay carpeta elegida")
-            return move(local, tree)
+            // Una captura nueva puede estar en flush() mientras esta termina de guardar.
+            synchronized(LOCK) {
+                if (!partial.renameTo(local)) throw IOException("no se pudo terminar ${local.name}")
+                val tree = folder() ?: throw IOException("no hay carpeta elegida")
+                return move(local, tree)
+            }
         } catch (e: Exception) {
             // SecurityException si se perdió el permiso, o lo que relance el proveedor.
             throw IOException("${e.message ?: e.javaClass.simpleName}. El audio quedó en la app y pasará a ${AudioRecordings.FOLDER}/ al volver a abrir la captura", e)
@@ -49,12 +54,26 @@ class VoiceRecordings(context: Context, private val folder: () -> Uri?) : AudioS
      * esperaban en la caché desde antes de esta versión). Devuelve cuántos.
      */
     fun flush(): Int {
-        val waiting = listOf(pendingDir, legacyDir)
-            .flatMap { it.listFiles().orEmpty().filter { f -> f.isFile && AudioRecordings.isAudio(f.name) } }
-        if (waiting.isEmpty()) return 0
-        val tree = folder() ?: return 0
-        for (file in waiting) move(file, tree)
-        return waiting.size
+        synchronized(LOCK) {
+            deleteAbandoned()
+            val waiting = listOf(pendingDir, legacyDir)
+                .flatMap { it.listFiles().orEmpty().filter { f -> f.isFile && AudioRecordings.isAudio(f.name) } }
+            if (waiting.isEmpty()) return 0
+            val tree = folder() ?: return 0
+            for (file in waiting) move(file, tree)
+            return waiting.size
+        }
+    }
+
+    /**
+     * Lo que dejó un proceso que murió codificando: no se puede abrir. Solo los
+     * viejos: uno reciente puede ser el de una captura que aún está guardando.
+     */
+    private fun deleteAbandoned() {
+        val limit = System.currentTimeMillis() - ABANDONED_AFTER_MILLIS
+        pendingDir.listFiles().orEmpty()
+            .filter { it.name.endsWith(AudioRecordings.PARTIAL_SUFFIX) && it.lastModified() < limit }
+            .forEach { it.delete() }
     }
 
     /** Copia [local] a `recordings/` con un nombre libre, la borra de la app y devuelve el nombre. */
@@ -123,5 +142,7 @@ class VoiceRecordings(context: Context, private val folder: () -> Uri?) : AudioS
     private companion object {
         val MIME_TYPE: String = MimeTypeMap.getSingleton().getMimeTypeFromExtension("m4a") ?: "audio/mp4"
         const val MAX_TRIES = 100
+        const val ABANDONED_AFTER_MILLIS = 60 * 60 * 1000L
+        val LOCK = Any()
     }
 }

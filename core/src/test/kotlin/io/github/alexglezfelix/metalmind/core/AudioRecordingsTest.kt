@@ -33,6 +33,8 @@ class AudioRecordingsTest {
         assertFalse(AudioRecordings.isAudio(".syncthing.2026-11-01-093005.m4a.tmp"))
         assertFalse(AudioRecordings.isAudio(".2026-11-01-093005.m4a"))
         assertFalse(AudioRecordings.isAudio("2026-11-01-093005.md"))
+        // A medio codificar: si el proceso muere, no llega al vault.
+        assertFalse(AudioRecordings.isAudio("2026-11-01-093005.m4a" + AudioRecordings.PARTIAL_SUFFIX))
     }
 
     // El contrato con el script que transcribe fuera del teléfono (README, "Audios pendientes").
