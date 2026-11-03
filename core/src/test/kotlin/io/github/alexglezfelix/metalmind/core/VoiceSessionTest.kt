@@ -31,7 +31,7 @@ class VoiceSessionTest {
         }
     }
 
-    /** El buzón: guarda en memoria, con los nombres de la app. */
+    /** Las grabaciones: guarda en memoria, con los nombres de la app. */
     private class FakeSink(private val fail: String? = null) : AudioSink {
         val saved = mutableListOf<Pair<String, ShortArray>>()
 
@@ -120,7 +120,7 @@ class VoiceSessionTest {
     }
 
     @Test
-    fun `con Whisper apagado graba sin modelo y deja el audio en el buzón`() = runTest {
+    fun `con Whisper apagado graba sin modelo y deja el audio en recordings`() = runTest {
         val seen = mutableListOf<VoiceState>()
         val session = session(List(5) { FakePcmSource.tone() }, noModel, whisper = false) { s, read -> if (read == 5) s.stop() }
         session.start()
@@ -152,13 +152,13 @@ class VoiceSessionTest {
 
     @Test
     fun `si no se puede guardar el audio lo dice, y con Whisper el texto llega igual`() = runTest {
-        val broken = FakeSink(fail = "no se pudo crear buzon/")
+        val broken = FakeSink(fail = "no se pudo crear recordings/")
         val off = session(List(3) { FakePcmSource.tone() }, noModel, whisper = false, sink = broken) { s, read ->
             if (read == 3) s.stop()
         }
         off.start()
         advanceUntilIdle()
-        assertEquals(VoiceState.Failed("no se pudo crear buzon/"), off.state.value)
+        assertEquals(VoiceState.Failed("no se pudo crear recordings/"), off.state.value)
 
         val on = session(List(3) { FakePcmSource.tone() }, FakeTranscriber { "hola" }, sink = broken) { s, read ->
             if (read == 3) s.stop()
@@ -168,35 +168,35 @@ class VoiceSessionTest {
         val done = assertIs<VoiceState.Done>(on.state.value)
         assertEquals("hola", done.text)
         assertEquals(null, done.audio)
-        assertEquals("no se pudo crear buzon/", done.audioError)
+        assertEquals("no se pudo crear recordings/", done.audioError)
     }
 
     @Test
     fun `con silencio avisa si no se pudo guardar el audio`() = runTest {
         val transcriber = FakeTranscriber { "hola" }
-        val broken = FakeSink(fail = "no se pudo crear buzon/")
+        val broken = FakeSink(fail = "no se pudo crear recordings/")
         val session = session(List(5) { ShortArray(1600) }, transcriber, sink = broken) { s, read -> if (read == 5) s.stop() }
         session.start()
         advanceUntilIdle()
-        assertEquals(VoiceState.NothingHeard(null, audioError = "no se pudo crear buzon/"), session.state.value)
+        assertEquals(VoiceState.NothingHeard(null, audioError = "no se pudo crear recordings/"), session.state.value)
         assertEquals(0, transcriber.calls)
     }
 
     @Test
     fun `si whisper no reconoce nada avisa si no se pudo guardar el audio`() = runTest {
-        val broken = FakeSink(fail = "no se pudo crear buzon/")
+        val broken = FakeSink(fail = "no se pudo crear recordings/")
         val session = session(List(5) { FakePcmSource.tone() }, FakeTranscriber { "[Música]" }, sink = broken) { s, read ->
             if (read == 5) s.stop()
         }
         session.start()
         advanceUntilIdle()
-        assertEquals(VoiceState.NothingHeard(null, audioError = "no se pudo crear buzon/"), session.state.value)
+        assertEquals(VoiceState.NothingHeard(null, audioError = "no se pudo crear recordings/"), session.state.value)
     }
 
     @Test
     fun `No transcribir avisa si no se pudo guardar el audio`() = runTest {
         val transcriber = FakeTranscriber { "hola" }
-        val broken = FakeSink(fail = "no se pudo crear buzon/")
+        val broken = FakeSink(fail = "no se pudo crear recordings/")
         lateinit var session: VoiceSession
         var afterCancel: VoiceState? = null
         transcriber.onTranscribe = {
@@ -207,8 +207,8 @@ class VoiceSessionTest {
         session.start()
         advanceUntilIdle()
         // Se avisa al tocar el botón, y lo que termine después no lo borra.
-        assertEquals(VoiceState.Failed("no se pudo crear buzon/"), afterCancel)
-        assertEquals(VoiceState.Failed("no se pudo crear buzon/"), session.state.value)
+        assertEquals(VoiceState.Failed("no se pudo crear recordings/"), afterCancel)
+        assertEquals(VoiceState.Failed("no se pudo crear recordings/"), session.state.value)
         assertEquals(1, transcriber.cancels)
     }
 
@@ -218,20 +218,20 @@ class VoiceSessionTest {
             lateinit var session: VoiceSession
             val broken = AudioSink {
                 session.cancel()
-                throw IOException("no se pudo crear buzon/")
+                throw IOException("no se pudo crear recordings/")
             }
             session = session(List(3) { FakePcmSource.tone() }, FakeTranscriber { "hola" }, whisper, broken) { s, read ->
                 if (read == 3) s.stop()
             }
             session.start()
             advanceUntilIdle()
-            assertEquals(VoiceState.Failed("no se pudo crear buzon/"), session.state.value)
+            assertEquals(VoiceState.Failed("no se pudo crear recordings/"), session.state.value)
         }
     }
 
     @Test
     fun `descartar después de un fallo al guardar no repite el aviso`() = runTest {
-        val broken = FakeSink(fail = "no se pudo crear buzon/")
+        val broken = FakeSink(fail = "no se pudo crear recordings/")
         var discard = false
         val session = session(List(5) { FakePcmSource.tone() }, FakeTranscriber { "hola" }, sink = broken) { s, read ->
             if (read == 5) s.stop()
@@ -239,7 +239,7 @@ class VoiceSessionTest {
         }
         session.start()
         advanceUntilIdle()
-        assertEquals("no se pudo crear buzon/", assertIs<VoiceState.Done>(session.state.value).audioError)
+        assertEquals("no se pudo crear recordings/", assertIs<VoiceState.Done>(session.state.value).audioError)
         session.dismiss()
 
         discard = true

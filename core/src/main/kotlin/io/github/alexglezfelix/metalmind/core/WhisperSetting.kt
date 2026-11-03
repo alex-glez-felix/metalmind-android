@@ -12,7 +12,7 @@ interface BooleanPrefs {
 
 /**
  * Si Whisper transcribe en el teléfono al detener la grabación. Apagado de
- * entrada: sin él, grabar solo deja el audio en el buzón y no hace falta
+ * entrada: sin él, grabar solo deja el audio en el vault y no hace falta
  * modelo.
  *
  * La primera vez que se lee (en una instalación nueva o al actualizar desde

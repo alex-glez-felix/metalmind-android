@@ -70,7 +70,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** Las notas de voz de la captura: el micrófono, sus diálogos y el buzón de audio. */
+/** Las notas de voz de la captura: el micrófono, sus diálogos y las grabaciones. */
 @Stable
 class VoiceCapture internal constructor(
     internal val flow: VoiceFlow,
@@ -95,7 +95,7 @@ class VoiceCapture internal constructor(
 }
 
 /**
- * Cada grabación queda en `buzon/audio/` dentro de [folder]. [onText] recibe
+ * Cada grabación queda en `recordings/` dentro de [folder]. [onText] recibe
  * lo transcrito (con el enlace al audio) para ponerlo en el campo;
  * [onMessage], lo que haya que avisar.
  */
@@ -141,7 +141,7 @@ fun rememberVoiceCapture(folder: Uri, onText: (String) -> Unit, onMessage: (Stri
         when {
             result is Exception -> message(flushFailedFormat.format(result.message ?: result.javaClass.simpleName))
             result is Int && result > 0 ->
-                message(context.resources.getQuantityString(R.plurals.voice_flushed, result, result, AudioRecordings.PATH))
+                message(context.resources.getQuantityString(R.plurals.voice_flushed, result, result, AudioRecordings.FOLDER))
         }
     }
     // Salir de la captura corta la grabación o la transcripción: whisper no
@@ -156,7 +156,7 @@ fun rememberVoiceCapture(folder: Uri, onText: (String) -> Unit, onMessage: (Stri
     val errorFormat = stringResource(R.string.voice_error)
     val timeFormat = stringResource(R.string.voice_done_time)
     LaunchedEffect(state) {
-        fun path(audio: String) = "${AudioRecordings.PATH}/$audio"
+        fun path(audio: String) = "${AudioRecordings.FOLDER}/$audio"
         when (val s = state) {
             is VoiceState.Saved -> {
                 voice.session.dismiss()
@@ -292,7 +292,7 @@ private fun RecordingDialog(voice: VoiceCapture, state: VoiceState.Recording) {
                     stringResource(
                         if (whisper) R.string.voice_limit_whisper else R.string.voice_limit,
                         clock(VoiceRecorder.MAX_SECONDS),
-                        AudioRecordings.PATH,
+                        AudioRecordings.FOLDER,
                     ),
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -423,7 +423,7 @@ private fun ModelDialog(voice: VoiceCapture) {
         title = { Text(stringResource(R.string.voice_model_title)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(stringResource(R.string.voice_whisper_explain, AudioRecordings.PATH))
+                Text(stringResource(R.string.voice_whisper_explain, AudioRecordings.FOLDER))
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth().clickable(enabled = !copying) { voice.whisper = !whisper },

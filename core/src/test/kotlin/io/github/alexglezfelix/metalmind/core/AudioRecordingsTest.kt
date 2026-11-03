@@ -13,7 +13,7 @@ class AudioRecordingsTest {
     fun `el nombre es la fecha y la hora y el enlace es el de Metalmind`() {
         assertEquals("2026-11-01-093005.m4a", AudioRecordings.fileName(now))
         assertEquals("![[2026-11-01-093005.m4a]]", AudioRecordings.embed("2026-11-01-093005.m4a"))
-        assertEquals("buzon/audio", AudioRecordings.PATH)
+        assertEquals("recordings", AudioRecordings.FOLDER)
     }
 
     @Test
@@ -50,8 +50,8 @@ class AudioRecordingsTest {
             note in listOf(
                 "![[2026-11-01-093005.m4a]]",
                 "[[2026-11-01-093005.m4a|el audio]]",
-                "![[buzon/audio/2026-11-01-093005.m4a]]",
-                "[audio](buzon/audio/2026-11-01-093005.m4a)",
+                "![[recordings/2026-11-01-093005.m4a]]",
+                "[audio](recordings/2026-11-01-093005.m4a)",
                 "audio: 2026-11-01-093005.m4a",
                 "![[2026-11-01-093005.M4A]]",
             )
