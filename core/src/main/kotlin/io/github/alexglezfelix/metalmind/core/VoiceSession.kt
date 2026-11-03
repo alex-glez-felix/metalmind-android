@@ -21,37 +21,68 @@ interface Transcriber {
     fun cancel()
 }
 
+/**
+ * Dónde queda el audio de cada nota de voz: en el buzón del vault
+ * ([AudioInbox]), antes de transcribir nada.
+ */
+fun interface AudioSink {
+    /**
+     * Guarda [samples] y devuelve el nombre con el que se enlaza. Bloquea el
+     * hilo que la llama; si falla, lanza la excepción.
+     */
+    fun save(samples: ShortArray): String
+}
+
 sealed interface VoiceState {
     data object Idle : VoiceState
 
     data class Recording(val seconds: Int, val level: Float, val paused: Boolean) : VoiceState
 
+    /** Se dejó de grabar y el audio se está escribiendo en el buzón. */
+    data object Saving : VoiceState
+
     /** [audioSeconds]: lo grabado, para poner el tiempo que tarda en contexto. */
     data class Transcribing(val percent: Int, val audioSeconds: Int) : VoiceState
 
     /**
-     * Listo: [text] va al campo de captura; [audio], si se quiere guardar.
-     * [millis] es lo que se esperó desde que se dejó de grabar (cargar el
-     * modelo y whisper), para saber si el teléfono va bien con ese modelo.
+     * Sin transcribir (Whisper apagado, o se canceló la transcripción): el
+     * audio quedó en el buzón como [audio].
      */
-    class Done(val text: String, val audio: ShortArray, val millis: Long) : VoiceState {
-        val audioSeconds: Int get() = audio.size / VoiceRecorder.SAMPLE_RATE
-    }
+    data class Saved(val audio: String) : VoiceState
 
-    /** Se grabó silencio, o whisper no reconoció nada. */
-    data object NothingHeard : VoiceState
+    /**
+     * Listo: [text] va al campo de captura, y [audio] es el nombre con el que
+     * quedó en el buzón (`null` si no se pudo guardar: [audioError] dice por
+     * qué). [millis] es lo que tardó whisper (cargar el modelo y transcribir),
+     * para saber si el teléfono va bien con ese modelo.
+     */
+    data class Done(
+        val text: String,
+        val audio: String?,
+        val millis: Long,
+        val audioSeconds: Int,
+        val audioError: String? = null,
+    ) : VoiceState
 
-    data class Failed(val message: String) : VoiceState
+    /** Se grabó silencio, o whisper no reconoció nada; el audio quedó igual. */
+    data class NothingHeard(val audio: String?) : VoiceState
+
+    /** Algo falló; si el audio alcanzó a guardarse, [audio] es su nombre. */
+    data class Failed(val message: String, val audio: String? = null) : VoiceState
 }
 
 /**
- * Una nota de voz de principio a fin: grabar (con pausa), transcribir y
- * entregar el texto. Una sola a la vez.
+ * Una nota de voz de principio a fin: grabar (con pausa), guardar el audio en
+ * el buzón y, si [transcribe] lo pide al detener, transcribir y entregar el
+ * texto. Una sola a la vez.
  */
 class VoiceSession(
     private val scope: CoroutineScope,
     private val newRecorder: () -> VoiceRecorder,
     private val transcriber: Transcriber,
+    private val sink: AudioSink,
+    /** Si Whisper está encendido; se pregunta al detener la grabación. */
+    private val transcribe: () -> Boolean = { true },
     private val io: CoroutineDispatcher = Dispatchers.IO,
     /** Milisegundos de un reloj monótono, para medir la transcripción. */
     private val clock: () -> Long = { System.nanoTime() / 1_000_000 },
@@ -64,6 +95,9 @@ class VoiceSession(
 
     /** Lo pone [cancel]: lo que termine después ya no cambia el estado. */
     @Volatile private var cancelled = false
+
+    /** El nombre del audio de esta nota, en cuanto quedó en el buzón. */
+    @Volatile private var audio: String? = null
 
     val busy: Boolean get() = job?.isActive == true
 
@@ -79,6 +113,7 @@ class VoiceSession(
         }
         recorder = rec
         cancelled = false
+        audio = null
         _state.value = VoiceState.Recording(0, 0f, paused = false)
         job = scope.launch {
             val end = try {
@@ -86,36 +121,67 @@ class VoiceSession(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                VoiceState.Failed(e.message ?: e.javaClass.simpleName)
+                VoiceState.Failed(e.message ?: e.javaClass.simpleName, audio)
             }
             recorder = null
-            _state.value = if (cancelled) VoiceState.Idle else end
+            _state.update {
+                when {
+                    !cancelled -> end
+                    // Cancelado a mitad de camino: lo que haya quedado en el buzón se dice.
+                    it is VoiceState.Recording || it is VoiceState.Saving || it is VoiceState.Transcribing -> afterCancel()
+                    else -> it
+                }
+            }
         }
     }
 
     private fun run(rec: VoiceRecorder): VoiceState {
-        val audio = rec.record { samples, level ->
+        val samples = rec.record { count, level ->
             // update: pause() puede estar cambiando el estado desde el hilo de la UI.
             _state.update {
                 if (it is VoiceState.Recording && !it.paused) {
-                    it.copy(seconds = samples / VoiceRecorder.SAMPLE_RATE, level = level)
+                    it.copy(seconds = count / VoiceRecorder.SAMPLE_RATE, level = level)
                 } else {
                     it
                 }
             }
         } ?: return VoiceState.Idle
-        if (Pcm.isSilent(audio)) return VoiceState.NothingHeard
-        if (cancelled) return VoiceState.Idle
-        val audioSeconds = audio.size / VoiceRecorder.SAMPLE_RATE
+        // Primero el audio, siempre: es la fuente de verdad. Ni el silencio,
+        // ni whisper apagado, ni un fallo al transcribir lo pierden.
+        _state.value = VoiceState.Saving
+        val (saved, saveError) = try {
+            sink.save(samples) to null
+        } catch (e: Exception) {
+            null to (e.message ?: e.javaClass.simpleName)
+        }
+        audio = saved
+        if (!transcribe()) {
+            return if (saved != null) VoiceState.Saved(saved) else VoiceState.Failed(saveError!!)
+        }
+        if (Pcm.isSilent(samples)) return VoiceState.NothingHeard(saved)
+        if (cancelled) return afterCancel()
+        val audioSeconds = samples.size / VoiceRecorder.SAMPLE_RATE
         _state.value = VoiceState.Transcribing(0, audioSeconds)
         val start = clock()
-        val raw = transcriber.transcribe(Pcm.toFloats(audio)) { percent ->
-            _state.update { if (it is VoiceState.Transcribing) it.copy(percent = percent) else it }
-        } ?: return VoiceState.Idle
+        val raw = try {
+            transcriber.transcribe(Pcm.toFloats(samples)) { percent ->
+                _state.update { if (it is VoiceState.Transcribing) it.copy(percent = percent) else it }
+            }
+        } catch (e: Exception) {
+            val message = e.message ?: e.javaClass.simpleName
+            return VoiceState.Failed(if (saveError != null) "$message; $saveError" else message, saved)
+        } ?: return afterCancel()
         val millis = clock() - start
         val text = Transcript.clean(raw)
-        return if (text.isEmpty()) VoiceState.NothingHeard else VoiceState.Done(text, audio, millis)
+        return if (text.isEmpty()) {
+            VoiceState.NothingHeard(saved)
+        } else {
+            VoiceState.Done(text, saved, millis, audioSeconds, saveError)
+        }
     }
+
+    /** Tras cancelar: si el audio ya estaba en el buzón, ahí se queda. */
+    private fun afterCancel(): VoiceState = audio?.let { VoiceState.Saved(it) } ?: VoiceState.Idle
 
     fun pause() {
         if (_state.value !is VoiceState.Recording) return
@@ -129,22 +195,28 @@ class VoiceSession(
         _state.update { if (it is VoiceState.Recording) it.copy(paused = false) else it }
     }
 
-    /** Termina de grabar y empieza a transcribir. */
+    /** Termina de grabar: guarda el audio y, si toca, transcribe. */
     fun stop() {
         recorder?.stop()
     }
 
-    /** Descarta lo grabado o corta la transcripción. */
+    /**
+     * Grabando, descarta lo grabado: no queda audio. Después de detener, corta
+     * la transcripción, pero el audio ya está en el buzón y ahí se queda.
+     */
     fun cancel() {
         if (!busy) return
         cancelled = true
         recorder?.cancel()
         transcriber.cancel()
-        _state.value = VoiceState.Idle
+        // Mientras se escribe el audio no se interrumpe: al terminar, start() dice dónde quedó.
+        _state.update { if (it is VoiceState.Saving) it else afterCancel() }
     }
 
     /** Vuelve a [VoiceState.Idle] tras mostrar el resultado o el error. */
     fun dismiss() {
-        if (!busy) _state.value = VoiceState.Idle
+        _state.update {
+            if (it is VoiceState.Recording || it is VoiceState.Saving || it is VoiceState.Transcribing) it else VoiceState.Idle
+        }
     }
 }
