@@ -67,6 +67,23 @@ class VoiceRecordingsDeviceTest {
         }
     }
 
+    /** Un proceso que murió codificando deja un `.part`: no se manda al vault, y solo se borra si es viejo. */
+    @Test
+    fun loAMedioCodificarNoLlegaAlVault() {
+        val dir = File(context.filesDir, "voz/pendientes").apply { mkdirs() }
+        val old = File(dir, "viejo.m4a" + AudioRecordings.PARTIAL_SUFFIX).apply { writeText("x") }
+        old.setLastModified(System.currentTimeMillis() - 2 * 60 * 60 * 1000)
+        val recent = File(dir, "reciente.m4a" + AudioRecordings.PARTIAL_SUFFIX).apply { writeText("x") }
+        try {
+            assertEquals(0, VoiceRecordings(context) { null }.flush())
+            assertTrue(!old.exists())
+            assertTrue(recent.exists())
+        } finally {
+            old.delete()
+            recent.delete()
+        }
+    }
+
     /** Sin carpeta, el audio no se pierde: espera en la app y pasa al vault después. */
     @Test
     fun sinCarpetaElAudioEsperaEnLaApp() {
