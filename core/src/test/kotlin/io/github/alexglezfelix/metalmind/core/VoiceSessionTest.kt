@@ -6,6 +6,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -45,20 +47,25 @@ class VoiceSessionTest {
 
     private val sink = FakeSink()
 
+    /** Lo que [VoiceSession] contó al salir de la app: el audio y el error. */
+    private val left = mutableListOf<Pair<String?, String?>>()
+
     private fun TestScope.session(
         chunks: List<ShortArray>,
         transcriber: Transcriber,
         whisper: Boolean = true,
         sink: AudioSink = this@VoiceSessionTest.sink,
+        scope: CoroutineScope = this,
         afterRead: (VoiceSession, Int) -> Unit,
     ): VoiceSession {
         lateinit var session: VoiceSession
         session = VoiceSession(
-            scope = this,
+            scope = scope,
             newRecorder = { VoiceRecorder(FakePcmSource(chunks) { afterRead(session, it) }) },
             transcriber = transcriber,
             sink = sink,
             transcribe = { whisper },
+            onLeft = { audio, error -> left += audio to error },
             io = StandardTestDispatcher(testScheduler),
         )
         return session
@@ -307,6 +314,117 @@ class VoiceSessionTest {
         session.start()
         advanceUntilIdle()
         assertEquals(VoiceState.Saved("2026-11-03-091500.m4a"), session.state.value)
+    }
+
+    @Test
+    fun `salir grabando guarda lo grabado, no transcribe y lo cuenta`() = runTest {
+        for (whisper in listOf(true, false)) {
+            sink.saved.clear()
+            left.clear()
+            val transcriber = FakeTranscriber { "hola" }
+            val session = session(List(5) { FakePcmSource.tone() }, transcriber, whisper) { s, read -> if (read == 3) s.leave() }
+            session.start()
+            advanceUntilIdle()
+            assertEquals(3 * 1600, sink.saved.single().second.size)
+            assertEquals(listOf<Pair<String?, String?>>("2026-11-03-091500.m4a" to null), left)
+            assertEquals(0, transcriber.calls)
+            // El aviso va por onLeft: el estado no lo repite.
+            assertEquals(VoiceState.Idle, session.state.value)
+        }
+    }
+
+    @Test
+    fun `salir en pausa guarda lo grabado hasta la pausa`() = runTest {
+        val session = session(List(5) { FakePcmSource.tone() }, noModel) { s, read ->
+            if (read == 2) {
+                s.pause()
+                assertTrue(assertIs<VoiceState.Recording>(s.state.value).paused)
+                s.leave()
+            }
+        }
+        session.start()
+        advanceUntilIdle()
+        assertEquals(2 * 1600, sink.saved.single().second.size)
+        assertEquals("2026-11-03-091500.m4a", left.single().first)
+    }
+
+    @Test
+    fun `salir antes de la primera lectura no deja un audio vacío`() = runTest {
+        val session = session(List(5) { FakePcmSource.tone() }, noModel) { _, _ -> }
+        session.start()
+        session.leave()
+        advanceUntilIdle()
+        assertTrue(sink.saved.isEmpty())
+        assertTrue(left.isEmpty())
+        assertEquals(VoiceState.Idle, session.state.value)
+    }
+
+    @Test
+    fun `salir grabando sin poder escribir en el vault cuenta el error`() = runTest {
+        val broken = FakeSink(fail = "no se pudo crear recordings/")
+        val session = session(List(5) { FakePcmSource.tone() }, noModel, sink = broken) { s, read -> if (read == 3) s.leave() }
+        session.start()
+        advanceUntilIdle()
+        assertEquals(listOf<Pair<String?, String?>>(null to "no se pudo crear recordings/"), left)
+        assertEquals(VoiceState.Idle, session.state.value)
+    }
+
+    @Test
+    fun `destruir la pantalla después de salir no pierde lo grabado`() = runTest {
+        // Lo que pasa con Atrás: leave, cancel y el scope de la composición cancelado.
+        val composition = CoroutineScope(coroutineContext + Job(coroutineContext[Job]))
+        val session = session(List(5) { FakePcmSource.tone() }, noModel, scope = composition) { s, read ->
+            if (read == 3) {
+                s.leave()
+                s.cancel()
+                composition.coroutineContext[Job]!!.cancel()
+            }
+        }
+        session.start()
+        advanceUntilIdle()
+        assertEquals(3 * 1600, sink.saved.single().second.size)
+        assertEquals("2026-11-03-091500.m4a", left.single().first)
+    }
+
+    @Test
+    fun `salir mientras se guarda no transcribe y lo cuenta`() = runTest {
+        val transcriber = FakeTranscriber { "hola" }
+        lateinit var session: VoiceSession
+        val saving = AudioSink { samples ->
+            session.leave()
+            sink.save(samples)
+        }
+        session = session(List(3) { FakePcmSource.tone() }, transcriber, sink = saving) { s, read -> if (read == 3) s.stop() }
+        session.start()
+        advanceUntilIdle()
+        assertEquals(0, transcriber.calls)
+        assertEquals("2026-11-03-091500.m4a", left.single().first)
+    }
+
+    @Test
+    fun `salir mientras transcribe no corta whisper`() = runTest {
+        val transcriber = FakeTranscriber { "hola" }
+        lateinit var session: VoiceSession
+        transcriber.onTranscribe = { session.leave() }
+        session = session(List(3) { FakePcmSource.tone() }, transcriber) { s, read -> if (read == 3) s.stop() }
+        session.start()
+        advanceUntilIdle()
+        assertEquals("hola", assertIs<VoiceState.Done>(session.state.value).text)
+        assertTrue(left.isEmpty())
+    }
+
+    @Test
+    fun `salir después de descartar no guarda nada`() = runTest {
+        val session = session(List(5) { FakePcmSource.tone() }, noModel) { s, read ->
+            if (read == 2) {
+                s.cancel()
+                s.leave()
+            }
+        }
+        session.start()
+        advanceUntilIdle()
+        assertTrue(sink.saved.isEmpty())
+        assertTrue(left.isEmpty())
     }
 
     @Test
