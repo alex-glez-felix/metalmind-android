@@ -188,7 +188,7 @@ private fun CaptureScreen(settings: VaultSettings, initialText: String, startVoi
         scope.launch {
             val outcome = withContext(Dispatchers.IO) {
                 try {
-                    // Los audios ya están en el buzón desde que se dejó de grabar.
+                    // Los audios ya están en `recordings/` desde que se dejó de grabar.
                     when (val r = Capture.save(SafNoteFolder(context.contentResolver, current), toSave, LocalDateTime.now())) {
                         is CaptureResult.Saved -> Outcome.Saved(r.name)
                         is CaptureResult.NameTaken -> Outcome.Failed(nameTakenFormat.format(r.stem))

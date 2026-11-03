@@ -4,7 +4,7 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
 /**
- * El buzón de audio: cada nota de voz deja su audio en `buzon/audio/`, dentro
+ * Las grabaciones: cada nota de voz deja su audio en `recordings/`, dentro
  * de la carpeta elegida, haya o no transcripción. El audio es la fuente de
  * verdad; el texto, un derivado que se puede regenerar.
  *
@@ -14,11 +14,8 @@ import java.time.format.DateTimeFormatter
  * lo nombra, está pendiente.
  */
 object AudioRecordings {
-    /** La ruta desde la carpeta elegida, una carpeta por elemento. */
-    val FOLDER = listOf("buzon", "audio")
-
-    /** Para mostrarla: `buzon/audio`. */
-    val PATH = FOLDER.joinToString("/")
+    /** La carpeta de las grabaciones, dentro de la carpeta elegida. */
+    const val FOLDER = "recordings"
 
     const val EXTENSION = ".m4a"
     private val STAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd-HHmmss")
@@ -44,7 +41,7 @@ object AudioRecordings {
     fun embed(name: String): String = "![[$name]]"
 
     /**
-     * Si [name] es un audio del buzón. No lo son los ocultos (Syncthing
+     * Si [name] es una grabación. No lo son los ocultos (Syncthing
      * escribe `.syncthing.<nombre>.tmp` mientras copia) ni otros formatos.
      */
     fun isAudio(name: String): Boolean = !name.startsWith(".") && name.endsWith(EXTENSION, ignoreCase = true)
@@ -52,7 +49,7 @@ object AudioRecordings {
     /**
      * Si [note] nombra el audio [name]: el nombre entero, sin distinguir
      * mayúsculas, en cualquier forma de enlace (`![[…]]`, `[[…|alias]]`,
-     * `[…](buzon/audio/…)`) o suelto. `…-093005.m4a` no cuenta como
+     * `[…](recordings/…)`) o suelto. `…-093005.m4a` no cuenta como
      * `…-093005-2.m4a`, ni al revés.
      */
     fun names(note: String, name: String): Boolean = mention(name).containsMatchIn(note)
@@ -63,7 +60,7 @@ object AudioRecordings {
         return notes.any { pattern.containsMatchIn(it) }
     }
 
-    /** Los audios de [files] (nombres de `buzon/audio/`) que ninguna de [notes] nombra. */
+    /** Los audios de [files] (nombres de `recordings/`) que ninguna de [notes] nombra. */
     fun pending(files: Collection<String>, notes: Sequence<String>): List<String> {
         val audios = files.filter(::isAudio)
         val named = HashSet<String>()

@@ -22,7 +22,7 @@ interface Transcriber {
 }
 
 /**
- * Dónde queda el audio de cada nota de voz: en el buzón del vault
+ * Dónde queda el audio de cada nota de voz: en `recordings/` del vault
  * ([AudioRecordings]), antes de transcribir nada.
  */
 fun interface AudioSink {
@@ -38,7 +38,7 @@ sealed interface VoiceState {
 
     data class Recording(val seconds: Int, val level: Float, val paused: Boolean) : VoiceState
 
-    /** Se dejó de grabar y el audio se está escribiendo en el buzón. */
+    /** Se dejó de grabar y el audio se está escribiendo en el vault. */
     data object Saving : VoiceState
 
     /** [audioSeconds]: lo grabado, para poner el tiempo que tarda en contexto. */
@@ -46,13 +46,13 @@ sealed interface VoiceState {
 
     /**
      * Sin transcribir (Whisper apagado, o se canceló la transcripción): el
-     * audio quedó en el buzón como [audio].
+     * audio quedó en el vault como [audio].
      */
     data class Saved(val audio: String) : VoiceState
 
     /**
      * Listo: [text] va al campo de captura, y [audio] es el nombre con el que
-     * quedó en el buzón (`null` si no se pudo guardar: [audioError] dice por
+     * quedó en el vault (`null` si no se pudo guardar: [audioError] dice por
      * qué). [millis] es lo que tardó whisper (cargar el modelo y transcribir),
      * para saber si el teléfono va bien con ese modelo.
      */
@@ -76,7 +76,7 @@ sealed interface VoiceState {
 
 /**
  * Una nota de voz de principio a fin: grabar (con pausa), guardar el audio en
- * el buzón y, si [transcribe] lo pide al detener, transcribir y entregar el
+ * el vault y, si [transcribe] lo pide al detener, transcribir y entregar el
  * texto. Una sola a la vez.
  */
 class VoiceSession(
@@ -99,10 +99,10 @@ class VoiceSession(
     /** Lo pone [cancel]: lo que termine después ya no cambia el estado. */
     @Volatile private var cancelled = false
 
-    /** El nombre del audio de esta nota, en cuanto quedó en el buzón. */
+    /** El nombre del audio de esta nota, en cuanto quedó en el vault. */
     @Volatile private var audio: String? = null
 
-    /** Por qué no quedó en el buzón, si falló al guardarlo. */
+    /** Por qué no quedó en el vault, si falló al guardarlo. */
     @Volatile private var saveError: String? = null
 
     val busy: Boolean get() = job?.isActive == true
@@ -134,7 +134,7 @@ class VoiceSession(
             _state.update {
                 when {
                     !cancelled -> end
-                    // Cancelado a mitad de camino: lo que haya quedado en el buzón se dice.
+                    // Cancelado a mitad de camino: lo que haya quedado en el vault se dice.
                     it is VoiceState.Recording || it is VoiceState.Saving || it is VoiceState.Transcribing -> afterCancel()
                     else -> it
                 }
@@ -188,7 +188,7 @@ class VoiceSession(
         }
     }
 
-    /** Tras cancelar: si el audio ya estaba en el buzón, ahí se queda; si no se pudo guardar, se dice. */
+    /** Tras cancelar: si el audio ya estaba en el vault, ahí se queda; si no se pudo guardar, se dice. */
     private fun afterCancel(): VoiceState =
         audio?.let { VoiceState.Saved(it) } ?: saveError?.let { VoiceState.Failed(it) } ?: VoiceState.Idle
 
@@ -211,7 +211,7 @@ class VoiceSession(
 
     /**
      * Grabando, descarta lo grabado: no queda audio. Después de detener, corta
-     * la transcripción, pero el audio ya está en el buzón y ahí se queda (si no
+     * la transcripción, pero el audio ya está en el vault y ahí se queda (si no
      * se pudo guardar, termina en [VoiceState.Failed]).
      */
     fun cancel() {

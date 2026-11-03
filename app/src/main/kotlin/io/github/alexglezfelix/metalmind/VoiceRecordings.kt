@@ -13,7 +13,7 @@ import java.io.IOException
 import java.time.LocalDateTime
 
 /**
- * El buzón de audio en el vault: `buzon/audio/` dentro de la carpeta que dé
+ * Las grabaciones en el vault: `recordings/` dentro de la carpeta que dé
  * [folder]. Cada grabación se codifica a m4a en el almacenamiento privado de
  * la app y enseguida se mueve ahí, sin pisar nunca un archivo. Si no se puede
  * (sin permiso, carpeta borrada), se queda en la app y [flush] la mueve la
@@ -40,12 +40,12 @@ class VoiceRecordings(context: Context, private val folder: () -> Uri?) : AudioS
             return move(local, tree)
         } catch (e: Exception) {
             // SecurityException si se perdió el permiso, o lo que relance el proveedor.
-            throw IOException("${e.message ?: e.javaClass.simpleName}. El audio quedó en la app y pasará a ${AudioRecordings.PATH}/ al volver a abrir la captura", e)
+            throw IOException("${e.message ?: e.javaClass.simpleName}. El audio quedó en la app y pasará a ${AudioRecordings.FOLDER}/ al volver a abrir la captura", e)
         }
     }
 
     /**
-     * Mueve al buzón los audios que no alcanzaron a llegar (y los que
+     * Mueve a `recordings/` los audios que no alcanzaron a llegar (y los que
      * esperaban en la caché desde antes de esta versión). Devuelve cuántos.
      */
     fun flush(): Int {
@@ -57,7 +57,7 @@ class VoiceRecordings(context: Context, private val folder: () -> Uri?) : AudioS
         return waiting.size
     }
 
-    /** Copia [local] a `buzon/audio/` con un nombre libre, la borra de la app y devuelve el nombre. */
+    /** Copia [local] a `recordings/` con un nombre libre, la borra de la app y devuelve el nombre. */
     private fun move(local: File, tree: Uri): String {
         val dir = recordingsFolder(tree)
         val taken = names(tree, dir).toMutableList()
@@ -87,15 +87,12 @@ class VoiceRecordings(context: Context, private val folder: () -> Uri?) : AudioS
         throw IOException("no se encontró un nombre libre para ${local.name}")
     }
 
-    /** `buzon/audio/` dentro de la carpeta elegida; crea lo que falte. */
+    /** `recordings/` dentro de la carpeta elegida; la crea si falta. */
     private fun recordingsFolder(tree: Uri): Uri {
-        var dir = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
-        for (segment in AudioRecordings.FOLDER) {
-            dir = child(tree, dir, segment)
-                ?: DocumentsContract.createDocument(resolver, dir, Document.MIME_TYPE_DIR, segment)
-                ?: throw IOException("no se pudo crear $segment/")
-        }
-        return dir
+        val root = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
+        return child(tree, root, AudioRecordings.FOLDER)
+            ?: DocumentsContract.createDocument(resolver, root, Document.MIME_TYPE_DIR, AudioRecordings.FOLDER)
+            ?: throw IOException("no se pudo crear ${AudioRecordings.FOLDER}/")
     }
 
     private fun child(tree: Uri, parent: Uri, name: String): Uri? {
@@ -114,7 +111,7 @@ class VoiceRecordings(context: Context, private val folder: () -> Uri?) : AudioS
     private fun names(tree: Uri, folder: Uri): List<String> {
         val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, DocumentsContract.getDocumentId(folder))
         val cursor = resolver.query(children, arrayOf(Document.COLUMN_DISPLAY_NAME), null, null, null)
-            ?: throw IOException("no se pudo listar ${AudioRecordings.PATH}/")
+            ?: throw IOException("no se pudo listar ${AudioRecordings.FOLDER}/")
         return cursor.use { buildList { while (it.moveToNext()) add(it.getString(0)) } }
     }
 

@@ -15,7 +15,7 @@ import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** El audio de una nota de voz: el m4a con el códec del sistema y su paso al buzón del vault. */
+/** El audio de una nota de voz: el m4a con el códec del sistema y su paso a `recordings/` en el vault. */
 @RunWith(AndroidJUnit4::class)
 class VoiceRecordingsDeviceTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -45,7 +45,7 @@ class VoiceRecordingsDeviceTest {
 
     /** Usa la carpeta del vault que la app ya tenga elegida; sin ella, se salta. Borra lo que escribe. */
     @Test
-    fun cadaGrabaciónVaAlBuzónSinPisarNinguna() {
+    fun cadaGrabaciónVaARecordingsSinPisarNinguna() {
         val tree = VaultSettings(context).folder
         assumeTrue("la app no tiene carpeta elegida", tree != null)
         val recordings = VoiceRecordings(context) { tree }
@@ -86,7 +86,7 @@ class VoiceRecordingsDeviceTest {
         DocumentsContract.deleteDocument(context.contentResolver, DocumentsContract.buildDocumentUriUsingTree(tree, added[0].first))
     }
 
-    /** Los archivos de `buzon/audio/`: (id, nombre). */
+    /** Los archivos de `recordings/`: (id, nombre). */
     private fun recordingFiles(tree: android.net.Uri): List<Pair<String, String>> {
         val resolver = context.contentResolver
         fun children(id: String) = resolver.query(
@@ -94,10 +94,8 @@ class VoiceRecordingsDeviceTest {
             arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME),
             null, null, null,
         )!!.use { c -> buildList { while (c.moveToNext()) add(c.getString(0) to c.getString(1)) } }
-        var id = DocumentsContract.getTreeDocumentId(tree)
-        for (segment in AudioRecordings.FOLDER) {
-            id = children(id).firstOrNull { it.second == segment }?.first ?: return emptyList()
-        }
+        val root = DocumentsContract.getTreeDocumentId(tree)
+        val id = children(root).firstOrNull { it.second == AudioRecordings.FOLDER }?.first ?: return emptyList()
         return children(id)
     }
 }
