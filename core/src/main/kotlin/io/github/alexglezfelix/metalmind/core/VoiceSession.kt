@@ -23,7 +23,7 @@ interface Transcriber {
 
 /**
  * Dónde queda el audio de cada nota de voz: en el buzón del vault
- * ([AudioInbox]), antes de transcribir nada.
+ * ([AudioRecordings]), antes de transcribir nada.
  */
 fun interface AudioSink {
     /**

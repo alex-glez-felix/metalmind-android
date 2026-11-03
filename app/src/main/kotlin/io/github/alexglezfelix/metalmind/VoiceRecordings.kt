@@ -6,7 +6,7 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import android.provider.DocumentsContract.Document
 import android.webkit.MimeTypeMap
-import io.github.alexglezfelix.metalmind.core.AudioInbox
+import io.github.alexglezfelix.metalmind.core.AudioRecordings
 import io.github.alexglezfelix.metalmind.core.AudioSink
 import java.io.File
 import java.io.IOException
@@ -19,7 +19,7 @@ import java.time.LocalDateTime
  * (sin permiso, carpeta borrada), se queda en la app y [flush] la mueve la
  * próxima vez: no se pierde.
  */
-class VoiceInbox(context: Context, private val folder: () -> Uri?) : AudioSink {
+class VoiceRecordings(context: Context, private val folder: () -> Uri?) : AudioSink {
     private val resolver: ContentResolver = context.contentResolver
     private val pendingDir = File(context.filesDir, "voz/pendientes")
 
@@ -28,7 +28,7 @@ class VoiceInbox(context: Context, private val folder: () -> Uri?) : AudioSink {
 
     override fun save(samples: ShortArray): String {
         pendingDir.mkdirs()
-        val local = File(pendingDir, AudioInbox.fileName(LocalDateTime.now(), pendingDir.list().orEmpty().toList()))
+        val local = File(pendingDir, AudioRecordings.fileName(LocalDateTime.now(), pendingDir.list().orEmpty().toList()))
         try {
             M4aEncoder.encode(samples, local)
         } catch (e: Exception) {
@@ -40,7 +40,7 @@ class VoiceInbox(context: Context, private val folder: () -> Uri?) : AudioSink {
             return move(local, tree)
         } catch (e: Exception) {
             // SecurityException si se perdió el permiso, o lo que relance el proveedor.
-            throw IOException("${e.message ?: e.javaClass.simpleName}. El audio quedó en la app y pasará a ${AudioInbox.PATH}/ al volver a abrir la captura", e)
+            throw IOException("${e.message ?: e.javaClass.simpleName}. El audio quedó en la app y pasará a ${AudioRecordings.PATH}/ al volver a abrir la captura", e)
         }
     }
 
@@ -50,7 +50,7 @@ class VoiceInbox(context: Context, private val folder: () -> Uri?) : AudioSink {
      */
     fun flush(): Int {
         val waiting = listOf(pendingDir, legacyDir)
-            .flatMap { it.listFiles().orEmpty().filter { f -> f.isFile && AudioInbox.isAudio(f.name) } }
+            .flatMap { it.listFiles().orEmpty().filter { f -> f.isFile && AudioRecordings.isAudio(f.name) } }
         if (waiting.isEmpty()) return 0
         val tree = folder() ?: return 0
         for (file in waiting) move(file, tree)
@@ -59,10 +59,10 @@ class VoiceInbox(context: Context, private val folder: () -> Uri?) : AudioSink {
 
     /** Copia [local] a `buzon/audio/` con un nombre libre, la borra de la app y devuelve el nombre. */
     private fun move(local: File, tree: Uri): String {
-        val dir = inboxFolder(tree)
+        val dir = recordingsFolder(tree)
         val taken = names(tree, dir).toMutableList()
         repeat(MAX_TRIES) {
-            val name = AudioInbox.nextFree(local.name, taken)
+            val name = AudioRecordings.nextFree(local.name, taken)
             val uri = DocumentsContract.createDocument(resolver, dir, MIME_TYPE, name)
                 ?: throw IOException("no se pudo crear $name")
             if (displayName(uri) != name) {
@@ -88,9 +88,9 @@ class VoiceInbox(context: Context, private val folder: () -> Uri?) : AudioSink {
     }
 
     /** `buzon/audio/` dentro de la carpeta elegida; crea lo que falte. */
-    private fun inboxFolder(tree: Uri): Uri {
+    private fun recordingsFolder(tree: Uri): Uri {
         var dir = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
-        for (segment in AudioInbox.FOLDER) {
+        for (segment in AudioRecordings.FOLDER) {
             dir = child(tree, dir, segment)
                 ?: DocumentsContract.createDocument(resolver, dir, Document.MIME_TYPE_DIR, segment)
                 ?: throw IOException("no se pudo crear $segment/")
@@ -114,7 +114,7 @@ class VoiceInbox(context: Context, private val folder: () -> Uri?) : AudioSink {
     private fun names(tree: Uri, folder: Uri): List<String> {
         val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, DocumentsContract.getDocumentId(folder))
         val cursor = resolver.query(children, arrayOf(Document.COLUMN_DISPLAY_NAME), null, null, null)
-            ?: throw IOException("no se pudo listar ${AudioInbox.PATH}/")
+            ?: throw IOException("no se pudo listar ${AudioRecordings.PATH}/")
         return cursor.use { buildList { while (it.moveToNext()) add(it.getString(0)) } }
     }
 

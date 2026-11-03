@@ -57,7 +57,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
-import io.github.alexglezfelix.metalmind.core.AudioInbox
+import io.github.alexglezfelix.metalmind.core.AudioRecordings
 import io.github.alexglezfelix.metalmind.core.ModelCheck
 import io.github.alexglezfelix.metalmind.core.VoiceModel
 import io.github.alexglezfelix.metalmind.core.VoiceModels
@@ -76,7 +76,7 @@ class VoiceCapture internal constructor(
     internal val flow: VoiceFlow,
     internal val session: VoiceSession,
     internal val store: VoiceModelStore,
-    internal val inbox: VoiceInbox,
+    internal val recordings: VoiceRecordings,
 ) {
     private var whisperState by mutableStateOf(store.whisper.enabled)
 
@@ -109,13 +109,13 @@ fun rememberVoiceCapture(folder: Uri, onText: (String) -> Unit, onMessage: (Stri
     val voice = remember {
         val app = context.applicationContext
         val store = VoiceModelStore(app)
-        val inbox = VoiceInbox(app) { tree }
+        val recordings = VoiceRecordings(app) { tree }
         lateinit var voice: VoiceCapture
         val session = VoiceSession(
             scope = scope,
             newRecorder = { VoiceRecorder(AudioRecordSource()) },
             transcriber = WhisperTranscriber({ store.model }, app.applicationInfo.nativeLibraryDir),
-            sink = inbox,
+            sink = recordings,
             transcribe = { voice.whisper },
         )
         val flow = VoiceFlow(
@@ -123,7 +123,7 @@ fun rememberVoiceCapture(folder: Uri, onText: (String) -> Unit, onMessage: (Stri
             hasPermission = { hasMicPermission(app) },
             record = { session.start() },
         )
-        voice = VoiceCapture(flow, session, store, inbox)
+        voice = VoiceCapture(flow, session, store, recordings)
         voice
     }
     // Los audios que no alcanzaron a llegar al vault la vez anterior.
@@ -131,7 +131,7 @@ fun rememberVoiceCapture(folder: Uri, onText: (String) -> Unit, onMessage: (Stri
     LaunchedEffect(folder) {
         val result = withContext(Dispatchers.IO) {
             try {
-                voice.inbox.flush()
+                voice.recordings.flush()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -141,7 +141,7 @@ fun rememberVoiceCapture(folder: Uri, onText: (String) -> Unit, onMessage: (Stri
         when {
             result is Exception -> message(flushFailedFormat.format(result.message ?: result.javaClass.simpleName))
             result is Int && result > 0 ->
-                message(context.resources.getQuantityString(R.plurals.voice_flushed, result, result, AudioInbox.PATH))
+                message(context.resources.getQuantityString(R.plurals.voice_flushed, result, result, AudioRecordings.PATH))
         }
     }
     // Salir de la captura corta la grabación o la transcripción: whisper no
@@ -156,7 +156,7 @@ fun rememberVoiceCapture(folder: Uri, onText: (String) -> Unit, onMessage: (Stri
     val errorFormat = stringResource(R.string.voice_error)
     val timeFormat = stringResource(R.string.voice_done_time)
     LaunchedEffect(state) {
-        fun path(audio: String) = "${AudioInbox.PATH}/$audio"
+        fun path(audio: String) = "${AudioRecordings.PATH}/$audio"
         when (val s = state) {
             is VoiceState.Saved -> {
                 voice.session.dismiss()
@@ -164,7 +164,7 @@ fun rememberVoiceCapture(folder: Uri, onText: (String) -> Unit, onMessage: (Stri
             }
             is VoiceState.Done -> {
                 // La nota enlaza su audio: así se sabe que ya está transcrito (README).
-                deliver(s.audio?.let { s.text + "\n" + AudioInbox.embed(it) } ?: s.text)
+                deliver(s.audio?.let { s.text + "\n" + AudioRecordings.embed(it) } ?: s.text)
                 voice.session.dismiss()
                 s.audioError?.let { message(errorFormat.format(it)) }
                 // Cuánto tardó, para saber si el teléfono va bien con este modelo (#17).
@@ -292,7 +292,7 @@ private fun RecordingDialog(voice: VoiceCapture, state: VoiceState.Recording) {
                     stringResource(
                         if (whisper) R.string.voice_limit_whisper else R.string.voice_limit,
                         clock(VoiceRecorder.MAX_SECONDS),
-                        AudioInbox.PATH,
+                        AudioRecordings.PATH,
                     ),
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -423,7 +423,7 @@ private fun ModelDialog(voice: VoiceCapture) {
         title = { Text(stringResource(R.string.voice_model_title)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(stringResource(R.string.voice_whisper_explain, AudioInbox.PATH))
+                Text(stringResource(R.string.voice_whisper_explain, AudioRecordings.PATH))
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth().clickable(enabled = !copying) { voice.whisper = !whisper },
