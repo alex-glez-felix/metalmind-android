@@ -13,7 +13,7 @@ import java.time.format.DateTimeFormatter
  * hace el enlace `![[2026-11-01-093005.m4a]]` que escribe la app. Si ninguna
  * lo nombra, está pendiente.
  */
-object AudioInbox {
+object AudioRecordings {
     /** La ruta desde la carpeta elegida, una carpeta por elemento. */
     val FOLDER = listOf("buzon", "audio")
 

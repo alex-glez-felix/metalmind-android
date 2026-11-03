@@ -37,7 +37,7 @@ class VoiceSessionTest {
 
         override fun save(samples: ShortArray): String {
             fail?.let { throw IOException(it) }
-            val name = AudioInbox.fileName(LocalDateTime.of(2026, 11, 3, 9, 15, 0), saved.map { it.first })
+            val name = AudioRecordings.fileName(LocalDateTime.of(2026, 11, 3, 9, 15, 0), saved.map { it.first })
             saved += name to samples
             return name
         }
