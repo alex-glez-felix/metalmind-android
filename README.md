@@ -131,7 +131,7 @@ En shell, para un audio:
 ```sh
 name=2026-11-03-091500.m4a
 pattern="(^|[^[:alnum:]._-])${name//./\\.}([^[:alnum:]_-]|\$)"
-grep -rqiE --include='*.md' --exclude-dir='.*' -- "$pattern" "$VAULT" && echo transcrito || echo pendiente
+(cd "$VAULT" && grep -rqiE --include='*.md' --exclude-dir='.?*' -- "$pattern" .) && echo transcrito || echo pendiente
 ```
 
 La regla vive en `core` (`AudioInbox.isTranscribed`, con tests): si cambia, cambia ahí y aquí.
