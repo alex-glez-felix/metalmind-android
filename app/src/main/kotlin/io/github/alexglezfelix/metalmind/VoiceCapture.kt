@@ -150,7 +150,7 @@ fun rememberVoiceCapture(folder: Uri, onText: (String) -> Unit, onMessage: (Stri
 
     val state by voice.session.state.collectAsState()
     val savedFormat = stringResource(R.string.voice_saved)
-    val nothingHeard = stringResource(R.string.voice_nothing_heard)
+    val nothingHeardLostFormat = stringResource(R.string.voice_nothing_heard_lost)
     val nothingHeardKeptFormat = stringResource(R.string.voice_nothing_heard_kept)
     val failedKeptFormat = stringResource(R.string.voice_failed_kept)
     val errorFormat = stringResource(R.string.voice_error)
@@ -172,7 +172,7 @@ fun rememberVoiceCapture(folder: Uri, onText: (String) -> Unit, onMessage: (Stri
             }
             is VoiceState.NothingHeard -> {
                 voice.session.dismiss()
-                message(s.audio?.let { nothingHeardKeptFormat.format(path(it)) } ?: nothingHeard)
+                message(s.audio?.let { nothingHeardKeptFormat.format(path(it)) } ?: nothingHeardLostFormat.format(s.audioError))
             }
             is VoiceState.Failed -> {
                 voice.session.dismiss()
@@ -355,7 +355,7 @@ private fun TranscribingDialog(voice: VoiceCapture, state: VoiceState.Transcribi
             }
         },
         confirmButton = {},
-        // El audio ya está en el buzón: cancelar solo corta whisper.
+        // El audio ya se guardó antes de transcribir: cancelar solo corta whisper (si falló, se avisa).
         dismissButton = { TextButton(onClick = voice.session::cancel) { Text(stringResource(R.string.voice_stop_transcribing)) } },
     )
 }

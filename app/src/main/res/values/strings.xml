@@ -63,7 +63,7 @@
     <string name="voice_transcribing_time">%1$s · audio de %2$s</string>
     <string name="voice_done_time">Transcrito en %1$s (audio de %2$s).</string>
     <string name="voice_transcribing_offline">En el teléfono, sin red. Con un modelo grande puede tardar.</string>
-    <string name="voice_nothing_heard">No se oyó nada.</string>
+    <string name="voice_nothing_heard_lost">No se oyó nada, y el audio no se pudo guardar: %1$s</string>
     <string name="voice_nothing_heard_kept">No se oyó nada. El audio quedó en %1$s.</string>
     <string name="voice_failed_kept">No se pudo transcribir: %1$s. El audio quedó en %2$s.</string>
     <string name="voice_error">Nota de voz: %1$s</string>
