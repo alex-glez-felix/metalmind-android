@@ -24,7 +24,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -32,6 +31,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -57,28 +57,37 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
-import io.github.alexglezfelix.metalmind.core.AudioAttachment
+import io.github.alexglezfelix.metalmind.core.AudioInbox
 import io.github.alexglezfelix.metalmind.core.ModelCheck
 import io.github.alexglezfelix.metalmind.core.VoiceModel
 import io.github.alexglezfelix.metalmind.core.VoiceModels
 import io.github.alexglezfelix.metalmind.core.VoiceRecorder
 import io.github.alexglezfelix.metalmind.core.VoiceSession
 import io.github.alexglezfelix.metalmind.core.VoiceState
-import java.time.LocalDateTime
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** Las notas de voz de la captura: el micrófono, sus diálogos y los audios pendientes. */
+/** Las notas de voz de la captura: el micrófono, sus diálogos y el buzón de audio. */
 @Stable
 class VoiceCapture internal constructor(
     internal val flow: VoiceFlow,
     internal val session: VoiceSession,
     internal val store: VoiceModelStore,
-    val attachments: VoiceAttachments,
+    internal val inbox: VoiceInbox,
 ) {
+    private var whisperState by mutableStateOf(store.whisper.enabled)
+
+    /** Si Whisper está encendido; con estado, para que los diálogos se actualicen. */
+    var whisper: Boolean
+        get() = whisperState
+        set(on) {
+            store.whisper.enabled = on
+            whisperState = on
+        }
+
     /** El toque en el micrófono. */
     fun mic() {
         if (!session.busy) flow.mic()
@@ -86,75 +95,96 @@ class VoiceCapture internal constructor(
 }
 
 /**
- * [onText] recibe lo transcrito (y el enlace al audio, si se guarda) para
- * ponerlo en el campo; [onMessage], lo que haya que avisar.
+ * Cada grabación queda en `buzon/audio/` dentro de [folder]. [onText] recibe
+ * lo transcrito (con el enlace al audio) para ponerlo en el campo;
+ * [onMessage], lo que haya que avisar.
  */
 @Composable
-fun rememberVoiceCapture(onText: (String) -> Unit, onMessage: (String) -> Unit): VoiceCapture {
+fun rememberVoiceCapture(folder: Uri, onText: (String) -> Unit, onMessage: (String) -> Unit): VoiceCapture {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val tree by rememberUpdatedState(folder)
     val deliver by rememberUpdatedState(onText)
     val message by rememberUpdatedState(onMessage)
     val voice = remember {
         val app = context.applicationContext
         val store = VoiceModelStore(app)
-        lateinit var session: VoiceSession
-        session = VoiceSession(
+        val inbox = VoiceInbox(app) { tree }
+        lateinit var voice: VoiceCapture
+        val session = VoiceSession(
             scope = scope,
             newRecorder = { VoiceRecorder(AudioRecordSource()) },
             transcriber = WhisperTranscriber({ store.model }, app.applicationInfo.nativeLibraryDir),
+            sink = inbox,
+            transcribe = { voice.whisper },
         )
         val flow = VoiceFlow(
-            hasModel = { store.model != null },
+            needsModel = { voice.whisper && store.model == null },
             hasPermission = { hasMicPermission(app) },
             record = { session.start() },
         )
-        VoiceCapture(flow, session, store, VoiceAttachments(app))
+        voice = VoiceCapture(flow, session, store, inbox)
+        voice
     }
-    LaunchedEffect(Unit) { withContext(Dispatchers.IO) { voice.attachments.prune() } }
+    // Los audios que no alcanzaron a llegar al vault la vez anterior.
+    val flushFailedFormat = stringResource(R.string.voice_flush_failed)
+    LaunchedEffect(folder) {
+        val result = withContext(Dispatchers.IO) {
+            try {
+                voice.inbox.flush()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                e
+            }
+        }
+        when {
+            result is Exception -> message(flushFailedFormat.format(result.message ?: result.javaClass.simpleName))
+            result is Int && result > 0 ->
+                message(context.resources.getQuantityString(R.plurals.voice_flushed, result, result, AudioInbox.PATH))
+        }
+    }
     // Salir de la captura corta la grabación o la transcripción: whisper no
     // debe seguir gastando batería para un campo que ya no existe.
     DisposableEffect(Unit) { onDispose { voice.session.cancel() } }
 
     val state by voice.session.state.collectAsState()
+    val savedFormat = stringResource(R.string.voice_saved)
     val nothingHeard = stringResource(R.string.voice_nothing_heard)
-    val failedFormat = stringResource(R.string.voice_failed)
+    val nothingHeardKeptFormat = stringResource(R.string.voice_nothing_heard_kept)
+    val failedKeptFormat = stringResource(R.string.voice_failed_kept)
+    val errorFormat = stringResource(R.string.voice_error)
     val timeFormat = stringResource(R.string.voice_done_time)
     LaunchedEffect(state) {
+        fun path(audio: String) = "${AudioInbox.PATH}/$audio"
         when (val s = state) {
-            is VoiceState.Done -> {
-                var text = s.text
-                if (voice.store.saveAudio) {
-                    try {
-                        val name = withContext(Dispatchers.Default) { voice.attachments.add(s.audio, LocalDateTime.now()) }
-                        text += "\n" + AudioAttachment.embed(name)
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        // El texto vale más que el audio: se entrega igual.
-                        message(failedFormat.format(e.message ?: e.javaClass.simpleName))
-                    }
-                }
-                deliver(text)
+            is VoiceState.Saved -> {
                 voice.session.dismiss()
+                message(savedFormat.format(path(s.audio)))
+            }
+            is VoiceState.Done -> {
+                // La nota enlaza su audio: así se sabe que ya está transcrito (README).
+                deliver(s.audio?.let { s.text + "\n" + AudioInbox.embed(it) } ?: s.text)
+                voice.session.dismiss()
+                s.audioError?.let { message(errorFormat.format(it)) }
                 // Cuánto tardó, para saber si el teléfono va bien con este modelo (#17).
                 message(timeFormat.format(clock(((s.millis + 500) / 1000).toInt()), clock(s.audioSeconds)))
             }
-            VoiceState.NothingHeard -> {
+            is VoiceState.NothingHeard -> {
                 voice.session.dismiss()
-                message(nothingHeard)
+                message(s.audio?.let { nothingHeardKeptFormat.format(path(it)) } ?: nothingHeard)
             }
             is VoiceState.Failed -> {
                 voice.session.dismiss()
-                message(failedFormat.format(s.message))
+                message(s.audio?.let { failedKeptFormat.format(s.message, path(it)) } ?: errorFormat.format(s.message))
             }
             else -> {}
         }
     }
 
-    // Con la pantalla encendida mientras se graba o transcribe: apagarse a
-    // mitad de un dictado cortaría el micrófono.
-    val busy = state is VoiceState.Recording || state is VoiceState.Transcribing
+    // Con la pantalla encendida mientras se graba, se guarda o se transcribe:
+    // apagarse a mitad de un dictado cortaría el micrófono.
+    val busy = state is VoiceState.Recording || state is VoiceState.Saving || state is VoiceState.Transcribing
     val view = LocalView.current
     DisposableEffect(busy) {
         view.keepScreenOn = busy
@@ -183,9 +213,18 @@ fun VoiceDialogs(voice: VoiceCapture) {
         val canAskAgain = activity?.shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO) == true
         voice.flow.permissionResult(granted, canAskAgain)
     }
+    // Primero el estado: los ajustes se pueden abrir encima de la grabación.
+    val state by voice.session.state.collectAsState()
+    when (val s = state) {
+        is VoiceState.Recording -> RecordingDialog(voice, s)
+        VoiceState.Saving -> SavingDialog()
+        is VoiceState.Transcribing -> TranscribingDialog(voice, s)
+        else -> {}
+    }
+
     when (voice.flow.step) {
         VoiceStep.None -> {}
-        VoiceStep.ChooseModel -> ModelDialog(voice)
+        VoiceStep.ChooseModel, VoiceStep.Settings -> ModelDialog(voice)
         VoiceStep.RequestPermission -> LaunchedEffect(Unit) { permission.launch(Manifest.permission.RECORD_AUDIO) }
         VoiceStep.PermissionDenied -> AlertDialog(
             onDismissRequest = voice.flow::dismiss,
@@ -202,13 +241,6 @@ fun VoiceDialogs(voice: VoiceCapture) {
             dismissButton = { TextButton(onClick = voice.flow::dismiss) { Text(stringResource(R.string.cancel)) } },
         )
     }
-
-    val state by voice.session.state.collectAsState()
-    when (val s = state) {
-        is VoiceState.Recording -> RecordingDialog(voice, s)
-        is VoiceState.Transcribing -> TranscribingDialog(voice, s)
-        else -> {}
-    }
 }
 
 /** Que tocar fuera o Atrás no tire una grabación de varios minutos. */
@@ -216,7 +248,8 @@ private val sticky = DialogProperties(dismissOnBackPress = false, dismissOnClick
 
 @Composable
 private fun RecordingDialog(voice: VoiceCapture, state: VoiceState.Recording) {
-    var saveAudio by remember { mutableStateOf(voice.store.saveAudio) }
+    // Whisper se puede encender o apagar mientras se graba: vale al detener.
+    val whisper = voice.whisper
     AlertDialog(
         onDismissRequest = {},
         properties = sticky,
@@ -243,7 +276,10 @@ private fun RecordingDialog(voice: VoiceCapture, state: VoiceState.Recording) {
                         )
                     }
                     FilledIconButton(onClick = voice.session::stop, modifier = Modifier.size(56.dp)) {
-                        Icon(painterResource(R.drawable.ic_stop), contentDescription = stringResource(R.string.voice_stop))
+                        Icon(
+                            painterResource(R.drawable.ic_stop),
+                            contentDescription = stringResource(if (whisper) R.string.voice_stop else R.string.voice_stop_save),
+                        )
                     }
                 }
                 // El nivel, para ver que el micrófono oye; ×4 porque la voz
@@ -253,33 +289,46 @@ private fun RecordingDialog(voice: VoiceCapture, state: VoiceState.Recording) {
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Text(
-                    stringResource(R.string.voice_limit, clock(VoiceRecorder.MAX_SECONDS)),
+                    stringResource(
+                        if (whisper) R.string.voice_limit_whisper else R.string.voice_limit,
+                        clock(VoiceRecorder.MAX_SECONDS),
+                        AudioInbox.PATH,
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                 )
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth().clickable {
-                        saveAudio = !saveAudio
-                        voice.store.saveAudio = saveAudio
-                    },
-                ) {
-                    Checkbox(checked = saveAudio, onCheckedChange = null, modifier = Modifier.padding(end = 8.dp))
-                    Text(stringResource(R.string.voice_save_audio))
-                }
-                TextButton(onClick = {
-                    voice.session.cancel()
-                    voice.flow.manageModel()
-                }) {
+                // Los ajustes se abren encima, sin cortar la grabación.
+                TextButton(onClick = voice.flow::settings) {
                     Text(
-                        stringResource(R.string.voice_model_current, voice.store.label.orEmpty()),
+                        when {
+                            !whisper -> stringResource(R.string.voice_whisper_off)
+                            else -> stringResource(
+                                R.string.voice_whisper_on,
+                                voice.store.label ?: stringResource(R.string.voice_whisper_no_model),
+                            )
+                        },
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
         },
-        confirmButton = { Button(onClick = voice.session::stop) { Text(stringResource(R.string.voice_transcribe)) } },
+        confirmButton = {
+            Button(onClick = voice.session::stop) {
+                Text(stringResource(if (whisper) R.string.voice_transcribe else R.string.voice_save))
+            }
+        },
         dismissButton = { TextButton(onClick = voice.session::cancel) { Text(stringResource(R.string.voice_discard)) } },
+    )
+}
+
+@Composable
+private fun SavingDialog() {
+    AlertDialog(
+        onDismissRequest = {},
+        properties = sticky,
+        title = { Text(stringResource(R.string.voice_saving)) },
+        text = { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) },
+        confirmButton = {},
     )
 }
 
@@ -306,7 +355,8 @@ private fun TranscribingDialog(voice: VoiceCapture, state: VoiceState.Transcribi
             }
         },
         confirmButton = {},
-        dismissButton = { TextButton(onClick = voice.session::cancel) { Text(stringResource(R.string.cancel)) } },
+        // El audio ya está en el buzón: cancelar solo corta whisper.
+        dismissButton = { TextButton(onClick = voice.session::cancel) { Text(stringResource(R.string.voice_stop_transcribing)) } },
     )
 }
 
@@ -366,12 +416,23 @@ private fun ModelDialog(voice: VoiceCapture) {
     }
 
     val copying = import is Import.Copying
+    val whisper = voice.whisper
     AlertDialog(
         onDismissRequest = { if (!copying) voice.flow.dismiss() },
         properties = DialogProperties(dismissOnBackPress = !copying, dismissOnClickOutside = !copying),
         title = { Text(stringResource(R.string.voice_model_title)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(stringResource(R.string.voice_whisper_explain, AudioInbox.PATH))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().clickable(enabled = !copying) { voice.whisper = !whisper },
+                ) {
+                    Text(stringResource(R.string.voice_whisper_switch), modifier = Modifier.weight(1f))
+                    Switch(checked = whisper, onCheckedChange = null, enabled = !copying)
+                }
+                if (!whisper) return@Column
+                HorizontalDivider()
                 Text(stringResource(R.string.voice_model_explain))
                 for (model in VoiceModels.ALL) {
                     ModelRow(model, enabled = !copying, onDownload = { download(model) })
@@ -402,8 +463,14 @@ private fun ModelDialog(voice: VoiceCapture) {
             }
         },
         confirmButton = {
-            Button(enabled = !copying, onClick = { picker.launch(arrayOf("*/*")) }) {
-                Text(stringResource(R.string.voice_model_pick))
+            when {
+                whisper -> Button(enabled = !copying, onClick = { picker.launch(arrayOf("*/*")) }) {
+                    Text(stringResource(R.string.voice_model_pick))
+                }
+                // Se venía del micrófono y se apagó Whisper: a grabar, sin modelo.
+                voice.flow.step == VoiceStep.ChooseModel -> Button(onClick = voice.flow::modelReady) {
+                    Text(stringResource(R.string.voice_record_only))
+                }
             }
         },
         dismissButton = {

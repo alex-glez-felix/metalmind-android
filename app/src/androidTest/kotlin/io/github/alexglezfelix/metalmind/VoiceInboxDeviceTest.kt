@@ -5,9 +5,8 @@ import android.media.MediaFormat
 import android.provider.DocumentsContract
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import io.github.alexglezfelix.metalmind.core.AudioAttachment
+import io.github.alexglezfelix.metalmind.core.AudioInbox
 import java.io.File
-import java.time.LocalDateTime
 import kotlin.math.PI
 import kotlin.math.sin
 import org.junit.Assert.assertEquals
@@ -16,9 +15,9 @@ import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** El audio de una nota de voz: el m4a con el códec del sistema y su copia al vault. */
+/** El audio de una nota de voz: el m4a con el códec del sistema y su paso al buzón del vault. */
 @RunWith(AndroidJUnit4::class)
-class VoiceAttachmentsDeviceTest {
+class VoiceInboxDeviceTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
     /** Tres segundos de un tono de 440 Hz a 16 kHz. */
@@ -46,42 +45,59 @@ class VoiceAttachmentsDeviceTest {
 
     /** Usa la carpeta del vault que la app ya tenga elegida; sin ella, se salta. Borra lo que escribe. */
     @Test
-    fun soloVanAlVaultLosAudiosQueLaNotaEnlaza() {
+    fun cadaGrabaciónVaAlBuzónSinPisarNinguna() {
         val tree = VaultSettings(context).folder
         assumeTrue("la app no tiene carpeta elegida", tree != null)
-        val attachments = VoiceAttachments(context)
-        val before = vaultAttachments(tree!!).map { it.second }
-        val kept = attachments.add(tone, LocalDateTime.of(2001, 1, 1, 0, 0, 1))
-        val dropped = attachments.add(tone, LocalDateTime.of(2001, 1, 1, 0, 0, 2))
-        val text = "Prueba de voz\n${AudioAttachment.embed(kept)}"
+        val inbox = VoiceInbox(context) { tree }
+        val before = inboxFiles(tree!!).map { it.second }
 
-        val saved = attachments.saveFor(context.contentResolver, tree, text)
+        // Dos en el mismo segundo (o con un nombre ya tomado): ninguna pisa a otra.
+        val first = inbox.save(tone)
+        val second = inbox.save(tone)
 
-        // Con nombre tomado (de una corrida anterior) usa el siguiente y corrige el enlace.
-        val written = Regex("""!\[\[(.+)]]""").find(saved)!!.groupValues[1]
-        assertEquals(text.replace(kept, written), saved)
-        val after = vaultAttachments(tree)
-        assertEquals((before + written).sorted(), after.map { it.second }.sorted())
-        assertTrue(dropped !in after.map { it.second } || dropped in before)
-        // Ya guardado, sale de los pendientes: guardar otra vez no lo duplica.
-        assertEquals(text, attachments.saveFor(context.contentResolver, tree, text))
-        assertEquals(after, vaultAttachments(tree))
+        assertTrue(first != second)
+        val after = inboxFiles(tree)
+        assertEquals((before + first + second).sorted(), after.map { it.second }.sorted())
+        // Ya en el vault, nada queda esperando en la app.
+        assertEquals(0, inbox.flush())
 
-        File(context.cacheDir, "voz/$dropped").delete()
-        val id = after.first { it.second == written }.first
-        DocumentsContract.deleteDocument(context.contentResolver, DocumentsContract.buildDocumentUriUsingTree(tree, id))
+        for ((id, name) in after) {
+            if (name in before) continue
+            DocumentsContract.deleteDocument(context.contentResolver, DocumentsContract.buildDocumentUriUsingTree(tree, id))
+        }
     }
 
-    /** Los archivos de `adjuntos/`: (id, nombre). */
-    private fun vaultAttachments(tree: android.net.Uri): List<Pair<String, String>> {
+    /** Sin carpeta, el audio no se pierde: espera en la app y pasa al vault después. */
+    @Test
+    fun sinCarpetaElAudioEsperaEnLaApp() {
+        val tree = VaultSettings(context).folder
+        assumeTrue("la app no tiene carpeta elegida", tree != null)
+        var folder: android.net.Uri? = null
+        val inbox = VoiceInbox(context) { folder }
+        val before = inboxFiles(tree!!).map { it.second }
+
+        val error = runCatching { inbox.save(tone) }.exceptionOrNull()
+        assertTrue("$error", error?.message?.contains("quedó en la app") == true)
+        folder = tree
+        assertEquals(1, inbox.flush())
+
+        val added = inboxFiles(tree).filter { it.second !in before }
+        assertEquals(1, added.size)
+        DocumentsContract.deleteDocument(context.contentResolver, DocumentsContract.buildDocumentUriUsingTree(tree, added[0].first))
+    }
+
+    /** Los archivos de `buzon/audio/`: (id, nombre). */
+    private fun inboxFiles(tree: android.net.Uri): List<Pair<String, String>> {
         val resolver = context.contentResolver
-        val root = DocumentsContract.getTreeDocumentId(tree)
         fun children(id: String) = resolver.query(
             DocumentsContract.buildChildDocumentsUriUsingTree(tree, id),
             arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME),
             null, null, null,
         )!!.use { c -> buildList { while (c.moveToNext()) add(c.getString(0) to c.getString(1)) } }
-        val folder = children(root).firstOrNull { it.second == AudioAttachment.FOLDER } ?: return emptyList()
-        return children(folder.first)
+        var id = DocumentsContract.getTreeDocumentId(tree)
+        for (segment in AudioInbox.FOLDER) {
+            id = children(id).firstOrNull { it.second == segment }?.first ?: return emptyList()
+        }
+        return children(id)
     }
 }

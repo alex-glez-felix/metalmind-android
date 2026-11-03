@@ -74,10 +74,14 @@ class WhisperDeviceTest {
             scope = this,
             newRecorder = { VoiceRecorder(source).also { rec -> source.onEnd = rec::stop } },
             transcriber = WhisperTranscriber({ model }, context.applicationInfo.nativeLibraryDir, threads),
+            // Sin tocar el vault: aquí solo importa whisper.
+            sink = { "prueba.m4a" },
         )
         val start = System.nanoTime()
         session.start()
-        val end = session.state.first { it !is VoiceState.Recording && it !is VoiceState.Transcribing }
+        val end = session.state.first {
+            it !is VoiceState.Recording && it !is VoiceState.Saving && it !is VoiceState.Transcribing
+        }
         val seconds = (System.nanoTime() - start) / 1e9
         val text = (end as? VoiceState.Done)?.text ?: error("terminó en $end")
         Log.i(TAG, "%.1f s con %s, %d hilos: %s".format(seconds, model.length(), threads ?: WhisperTranscriber.threads, text))

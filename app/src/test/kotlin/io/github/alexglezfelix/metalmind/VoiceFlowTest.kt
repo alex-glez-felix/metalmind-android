@@ -4,16 +4,40 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class VoiceFlowTest {
+    private var whisper = true
     private var model = false
     private var permission = false
     private var recordings = 0
-    private val flow = VoiceFlow({ model }, { permission }, { recordings++ })
+    private val flow = VoiceFlow({ whisper && !model }, { permission }, { recordings++ })
 
     @Test
-    fun `sin modelo, el micrófono pide elegirlo y no el permiso`() {
+    fun `con Whisper encendido y sin modelo, el micrófono pide elegirlo y no el permiso`() {
         flow.mic()
         assertEquals(VoiceStep.ChooseModel, flow.step)
         assertEquals(0, recordings)
+    }
+
+    @Test
+    fun `con Whisper apagado no pide modelo, solo el permiso`() {
+        whisper = false
+        flow.mic()
+        assertEquals(VoiceStep.RequestPermission, flow.step)
+        flow.permissionResult(granted = true, canAskAgain = true)
+        assertEquals(1, recordings)
+        permission = true
+        flow.mic()
+        assertEquals(VoiceStep.None, flow.step)
+        assertEquals(2, recordings)
+    }
+
+    @Test
+    fun `apagar Whisper en el diálogo del modelo sigue a la grabación`() {
+        permission = true
+        flow.mic()
+        whisper = false
+        flow.modelReady()
+        assertEquals(VoiceStep.None, flow.step)
+        assertEquals(1, recordings)
     }
 
     @Test
@@ -59,13 +83,16 @@ class VoiceFlowTest {
     }
 
     @Test
-    fun `cambiar el modelo con uno ya instalado vuelve a grabar al elegirlo`() {
+    fun `los ajustes no graban al elegir modelo ni al cerrarse`() {
         model = true
         permission = true
-        flow.manageModel()
-        assertEquals(VoiceStep.ChooseModel, flow.step)
+        flow.settings()
+        assertEquals(VoiceStep.Settings, flow.step)
         flow.modelReady()
-        assertEquals(1, recordings)
+        assertEquals(VoiceStep.Settings, flow.step)
+        flow.dismiss()
+        assertEquals(VoiceStep.None, flow.step)
+        assertEquals(0, recordings)
     }
 
     @Test

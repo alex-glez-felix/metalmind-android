@@ -9,8 +9,14 @@ enum class VoiceStep {
     /** Nada: o no se tocó el micrófono, o ya se está grabando. */
     None,
 
-    /** Falta el modelo de whisper: elegirlo o descargarlo. */
+    /**
+     * Whisper está encendido y falta su modelo: elegirlo o descargarlo (o
+     * apagar Whisper y solo grabar).
+     */
     ChooseModel,
+
+    /** Los ajustes de voz (Whisper y su modelo), sin grabar al cerrarlos. */
+    Settings,
 
     /** Falta el permiso del micrófono: pedirlo al sistema. */
     RequestPermission,
@@ -20,11 +26,12 @@ enum class VoiceStep {
 }
 
 /**
- * Del toque en el micrófono a la grabación: primero el modelo, después el
- * permiso (pedido solo ahora, nunca al abrir la app), y entonces [record].
+ * Del toque en el micrófono a la grabación: el modelo, solo si Whisper está
+ * encendido y falta ([needsModel]); después el permiso (pedido solo ahora,
+ * nunca al abrir la app), y entonces [record].
  */
 class VoiceFlow(
-    private val hasModel: () -> Boolean,
+    private val needsModel: () -> Boolean,
     private val hasPermission: () -> Boolean,
     private val record: () -> Unit,
 ) {
@@ -33,7 +40,7 @@ class VoiceFlow(
 
     fun mic() {
         step = when {
-            !hasModel() -> VoiceStep.ChooseModel
+            needsModel() -> VoiceStep.ChooseModel
             !hasPermission() -> VoiceStep.RequestPermission
             else -> {
                 record()
@@ -42,7 +49,10 @@ class VoiceFlow(
         }
     }
 
-    /** Ya hay modelo: sigue hacia el permiso y la grabación. */
+    /**
+     * Ya hay modelo, o se apagó Whisper: sigue hacia el permiso y la
+     * grabación, si se venía del micrófono.
+     */
     fun modelReady() {
         if (step == VoiceStep.ChooseModel) mic()
     }
@@ -63,9 +73,9 @@ class VoiceFlow(
         }
     }
 
-    /** Para cambiar el modelo aunque ya haya uno. */
-    fun manageModel() {
-        step = VoiceStep.ChooseModel
+    /** Para encender o apagar Whisper o cambiar el modelo; también mientras se graba. */
+    fun settings() {
+        step = VoiceStep.Settings
     }
 
     fun dismiss() {
