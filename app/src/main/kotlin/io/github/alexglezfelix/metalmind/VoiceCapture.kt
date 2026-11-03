@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.SystemClock
 import android.provider.Settings
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -57,6 +58,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import io.github.alexglezfelix.metalmind.core.AudioRecordings
 import io.github.alexglezfelix.metalmind.core.ModelCheck
 import io.github.alexglezfelix.metalmind.core.VoiceModel
@@ -110,6 +115,7 @@ fun rememberVoiceCapture(folder: Uri, onText: (String) -> Unit, onMessage: (Stri
         val app = context.applicationContext
         val store = VoiceModelStore(app)
         val recordings = VoiceRecordings(app) { tree }
+        val notices = VoiceLeaveNotices.get(app)
         lateinit var voice: VoiceCapture
         val session = VoiceSession(
             scope = scope,
@@ -117,6 +123,15 @@ fun rememberVoiceCapture(folder: Uri, onText: (String) -> Unit, onMessage: (Stri
             transcriber = WhisperTranscriber({ store.model }, app.applicationInfo.nativeLibraryDir),
             sink = recordings,
             transcribe = { voice.whisper },
+            onLeft = { audio, error ->
+                notices.add(
+                    if (audio != null) {
+                        app.getString(R.string.voice_saved_on_leave, "${AudioRecordings.FOLDER}/$audio")
+                    } else {
+                        app.getString(R.string.voice_error, error)
+                    },
+                )
+            },
         )
         val flow = VoiceFlow(
             needsModel = { voice.whisper && store.model == null },
@@ -144,9 +159,31 @@ fun rememberVoiceCapture(folder: Uri, onText: (String) -> Unit, onMessage: (Stri
                 message(context.resources.getQuantityString(R.plurals.voice_flushed, result, result, AudioRecordings.FOLDER))
         }
     }
-    // Salir de la captura corta la grabación o la transcripción: whisper no
-    // debe seguir gastando batería para un campo que ya no existe.
-    DisposableEffect(Unit) { onDispose { voice.session.cancel() } }
+    // Dejar de verse (inicio, otra app, bloquear la pantalla, Atrás) detiene la
+    // grabación y la guarda: en segundo plano el micrófono solo daría silencio.
+    // Si además se destruye, whisper no debe seguir gastando batería para un
+    // campo que ya no existe.
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) voice.session.leave()
+        }
+        lifecycle.addObserver(observer)
+        onDispose {
+            lifecycle.removeObserver(observer)
+            voice.session.leave()
+            voice.session.cancel()
+        }
+    }
+    // Lo guardado al salir se avisa al volver a verse, aunque sea otra actividad u otro proceso.
+    LaunchedEffect(lifecycle) {
+        val notices = VoiceLeaveNotices.get(context.applicationContext)
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            notices.items.collect {
+                if (it.isNotEmpty()) notices.take().forEach { notice -> message(notice) }
+            }
+        }
+    }
 
     val state by voice.session.state.collectAsState()
     val savedFormat = stringResource(R.string.voice_saved)
@@ -243,16 +280,21 @@ fun VoiceDialogs(voice: VoiceCapture) {
     }
 }
 
-/** Que tocar fuera o Atrás no tire una grabación de varios minutos. */
+/** Que tocar fuera o Atrás no interrumpan lo que se está guardando o transcribiendo. */
 private val sticky = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)
 
 @Composable
 private fun RecordingDialog(voice: VoiceCapture, state: VoiceState.Recording) {
     // Whisper se puede encender o apagar mientras se graba: vale al detener.
     val whisper = voice.whisper
+    val back = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
     AlertDialog(
-        onDismissRequest = {},
-        properties = sticky,
+        // Atrás sale de la app como siempre, y al salir se guarda lo grabado.
+        onDismissRequest = {
+            voice.session.leave()
+            back?.onBackPressed()
+        },
+        properties = DialogProperties(dismissOnBackPress = true, dismissOnClickOutside = false),
         title = {
             Text(stringResource(if (state.paused) R.string.voice_paused else R.string.voice_recording))
         },

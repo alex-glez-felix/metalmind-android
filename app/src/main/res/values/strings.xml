@@ -53,6 +53,7 @@
     <string name="voice_record_only">Grabar</string>
     <string name="voice_saving">Guardando el audio…</string>
     <string name="voice_saved">Audio guardado en %1$s.</string>
+    <string name="voice_saved_on_leave">Saliste de la app mientras grababas: el audio quedó en %1$s.</string>
     <string name="voice_stop_transcribing">No transcribir</string>
     <plurals name="voice_flushed">
         <item quantity="one">Un audio que había quedado en la app pasó a %2$s/.</item>
