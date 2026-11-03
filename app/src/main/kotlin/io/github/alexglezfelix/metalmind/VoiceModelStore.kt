@@ -4,7 +4,9 @@ import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
+import io.github.alexglezfelix.metalmind.core.BooleanPrefs
 import io.github.alexglezfelix.metalmind.core.ModelCheck
+import io.github.alexglezfelix.metalmind.core.WhisperSetting
 import java.io.File
 import java.io.IOException
 import java.security.MessageDigest
@@ -23,10 +25,17 @@ class VoiceModelStore(context: Context) {
     /** Cómo se llama el modelo instalado: el de la lista, o el nombre del archivo elegido. */
     val label: String? get() = if (file.isFile) prefs.getString(KEY_LABEL, null) ?: file.name else null
 
-    /** Si se guarda el audio junto a la nota. Apagado de entrada. */
-    var saveAudio: Boolean
-        get() = prefs.getBoolean(KEY_SAVE_AUDIO, false)
-        set(value) = prefs.edit().putBoolean(KEY_SAVE_AUDIO, value).apply()
+    /** Si Whisper transcribe al detener; ver [WhisperSetting] para el valor de entrada. */
+    val whisper = WhisperSetting(
+        object : BooleanPrefs {
+            override fun get(key: String) = if (prefs.contains(key)) prefs.getBoolean(key, false) else null
+
+            override fun set(key: String, value: Boolean) = prefs.edit().putBoolean(key, value).apply()
+
+            override fun remove(key: String) = prefs.edit().remove(key).apply()
+        },
+        hasModel = { file.isFile },
+    )
 
     /**
      * Copia el archivo [uri] como modelo, calculando su SHA-256 por el camino.
@@ -89,6 +98,5 @@ class VoiceModelStore(context: Context) {
 
     private companion object {
         const val KEY_LABEL = "modelo"
-        const val KEY_SAVE_AUDIO = "guardar_audio"
     }
 }

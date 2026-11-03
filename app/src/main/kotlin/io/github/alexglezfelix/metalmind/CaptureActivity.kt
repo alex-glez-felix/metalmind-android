@@ -167,6 +167,7 @@ private fun CaptureScreen(settings: VaultSettings, initialText: String, startVoi
 
     // La nota de voz: lo transcrito va donde está el cursor.
     val voice = rememberVoiceCapture(
+        folder = current,
         onText = { transcript ->
             val done = Transcript.insert(field.text, field.selection.start, field.selection.end, transcript)
             field = TextFieldValue(done.text, TextRange(done.cursor))
@@ -187,10 +188,8 @@ private fun CaptureScreen(settings: VaultSettings, initialText: String, startVoi
         scope.launch {
             val outcome = withContext(Dispatchers.IO) {
                 try {
-                    // Primero los audios que enlaza: si fallan, la nota no queda
-                    // apuntando a nada.
-                    val final = voice.attachments.saveFor(context.contentResolver, current, toSave)
-                    when (val r = Capture.save(SafNoteFolder(context.contentResolver, current), final, LocalDateTime.now())) {
+                    // Los audios ya están en el buzón desde que se dejó de grabar.
+                    when (val r = Capture.save(SafNoteFolder(context.contentResolver, current), toSave, LocalDateTime.now())) {
                         is CaptureResult.Saved -> Outcome.Saved(r.name)
                         is CaptureResult.NameTaken -> Outcome.Failed(nameTakenFormat.format(r.stem))
                         CaptureResult.Empty -> null
