@@ -17,7 +17,7 @@ Sin cuentas, sin servidores, sin red, sin analítica: la carpeta se abre con el 
 
 ## Uso
 
-1. La primera vez, toca **Elegir carpeta del vault** y elige la carpeta donde quieres las capturas (la raíz del vault u otra dentro de él). El permiso queda guardado. Las notas de voz dejan su audio en `buzon/audio/` dentro de esa carpeta.
+1. La primera vez, toca **Elegir carpeta del vault** y elige la carpeta donde quieres las capturas (la raíz del vault u otra dentro de él). El permiso queda guardado. Las notas de voz dejan su audio en `recordings/` dentro de esa carpeta.
 2. Escribe y guarda con el botón o con la tecla de acción del teclado (con teclado físico, `Ctrl+Enter`). La tecla de acción guarda en vez de saltar de línea: para notas de varias líneas, pega el texto.
 3. Para cambiar de carpeta, **Cambiar carpeta** arriba a la derecha.
 
@@ -86,13 +86,13 @@ Con teclado físico, en la captura con dos paneles (en un panel, `Ctrl+K`, `Ente
 
 ### Notas de voz
 
-El micrófono de arriba **graba siempre a un audio en el vault**, sin red y sin modelo: al detener, el audio queda en `buzon/audio/` y la app avisa dónde (*Audio guardado en buzon/audio/2026-11-03-091500.m4a*). El audio es la fuente de verdad; el texto se saca de él en el teléfono, con Whisper, o después, fuera del teléfono (ver [Audios pendientes](#audios-pendientes)).
+El micrófono de arriba **graba siempre a un audio en el vault**, sin red y sin modelo: al detener, el audio queda en `recordings/` y la app avisa dónde (*Audio guardado en recordings/2026-11-03-091500.m4a*). El audio es la fuente de verdad; el texto se saca de él en el teléfono, con Whisper, o después, fuera del teléfono (ver [Audios pendientes](#audios-pendientes)).
 
 - **Grabar**: pausa, sigue y *Guardar audio* (con Whisper, *Transcribir*). Hasta 10 minutos. La pantalla queda encendida mientras graba; salir de la app corta la grabación sin guardarla.
-- **Descartar** tira la grabación: no queda ningún audio. Es la única forma de que una grabación no llegue al buzón.
-- **Dónde**: `buzon/audio/` **dentro de la carpeta elegida**, igual que las notas. Si elegiste la raíz del vault, es `<vault>/buzon/audio/`; si elegiste una subcarpeta (por ejemplo `capturas/`), es `capturas/buzon/audio/`. La app crea las carpetas si no están.
+- **Descartar** tira la grabación: no queda ningún audio. Es la única forma de que una grabación no llegue a `recordings/`.
+- **Dónde**: `recordings/` **dentro de la carpeta elegida**, igual que las notas. Si elegiste la raíz del vault, es `<vault>/recordings/`; si elegiste una subcarpeta (por ejemplo `capturas/`), es `capturas/recordings/`. La app la crea si no está.
 - **Formato y nombre**: m4a (AAC, unos 240 KB por minuto), con la fecha y la hora de cuando se detuvo: `2026-11-03-091500.m4a`. Si el nombre ya existe, `-2`, `-3`, …: nunca se pisa un archivo.
-- **Si el vault no responde** (se perdió el permiso de la carpeta, o la carpeta ya no está), el audio se queda en la app, se avisa, y pasa al buzón la próxima vez que se abre la captura con una carpeta que funcione.
+- **Si el vault no responde** (se perdió el permiso de la carpeta, o la carpeta ya no está), el audio se queda en la app, se avisa, y pasa a `recordings/` la próxima vez que se abre la captura con una carpeta que funcione.
 - **Atajo**: mantén pulsado el ícono de la app → *Nota de voz* abre la captura grabando.
 
 #### Transcribir en el teléfono (Whisper)
@@ -100,7 +100,7 @@ El micrófono de arriba **graba siempre a un audio en el vault**, sin red y sin 
 Opcional y **apagado de entrada**. Mientras grabas, toca *Transcribir en el teléfono: no* para abrir los ajustes de voz y enciende *Transcribir en el teléfono con Whisper*. Con Whisper encendido, al detener la voz pasa a texto **en el teléfono, sin red** y sin Google Play Services, con [whisper.cpp](https://github.com/ggml-org/whisper.cpp). El texto queda en el campo, donde está el cursor, con el enlace al audio debajo (`![[2026-11-03-091500.m4a]]`), para revisarlo antes de guardar; el nombre de la nota sale de la primera línea, como en cualquier captura.
 
 - **Sin modelo**: con Whisper encendido, el micrófono pide primero el modelo (abajo). Ahí mismo se puede apagar Whisper y *Grabar* solo el audio.
-- **Si falla la transcripción** (o no se oyó nada, o la cortas con *No transcribir*), el audio ya está en el buzón y la app lo dice. Si fue el audio lo que no se pudo guardar, también lo dice, y por qué.
+- **Si falla la transcripción** (o no se oyó nada, o la cortas con *No transcribir*), el audio ya está en `recordings/` y la app lo dice. Si fue el audio lo que no se pudo guardar, también lo dice, y por qué.
 - **Idioma**: español, con las palabras en inglés tal como se dicen ("revisar el pull request").
 - **Cuánto tarda**: mientras transcribe se ve el tiempo que lleva y cuánto audio era; al terminar, un aviso dice cuánto tardó (*Transcrito en 0:08 (audio de 0:30)*). Si `small` tarda más que el audio, prueba `base`.
 - **Si actualizas** desde una versión que ya transcribía y tenías un modelo importado, Whisper sigue encendido: nada cambia sin avisar. En una instalación nueva viene apagado.
@@ -118,25 +118,25 @@ El WER es el del artículo de Whisper para el modelo sin cuantizar (tabla D.2.4)
 
 ### Audios pendientes
 
-Los audios del buzón que nadie transcribió quedan para un script fuera del teléfono (por ejemplo en el servidor, al que Syncthing lleva el vault). La app no trae ese script; esto es lo que tiene que saber para **no transcribir nunca dos veces**:
+Los audios de `recordings/` que nadie transcribió quedan para un script fuera del teléfono (por ejemplo en el servidor, al que Syncthing lleva el vault). La app no trae ese script; esto es lo que tiene que saber para **no transcribir nunca dos veces**:
 
-- **Dónde**: los `*.m4a` de cada carpeta `buzon/audio/` del vault (una por cada carpeta que se haya elegido en la app; con la raíz, `<vault>/buzon/audio/`). No cuentan los ocultos: Syncthing escribe `.syncthing.<nombre>.tmp` mientras copia.
-- **Transcrito = alguna nota lo nombra.** Un audio `2026-11-03-091500.m4a` ya está transcrito si algún `.md` del vault contiene su nombre de archivo entero, sin distinguir mayúsculas: el enlace que escribe la app (`![[2026-11-03-091500.m4a]]`), o cualquier otro (`[[…|alias]]`, `[…](buzon/audio/…)`). "Entero" quiere decir sin letra, número, `.`, `_` ni `-` pegados delante, ni letra, número, `_` o `-` detrás: `…-091500.m4a` no cuenta como `…-091500-2.m4a`. Si ninguna nota lo nombra, está **pendiente**.
+- **Dónde**: los `*.m4a` de cada carpeta `recordings/` del vault (una por cada carpeta que se haya elegido en la app; con la raíz, `<vault>/recordings/`). No cuentan los ocultos: Syncthing escribe `.syncthing.<nombre>.tmp` mientras copia. Tampoco los que estén dentro de una carpeta oculta (`.stversions/recordings/…`).
+- **Transcrito = alguna nota lo nombra.** Un audio `2026-11-03-091500.m4a` ya está transcrito si algún `.md` del vault contiene su nombre de archivo entero, sin distinguir mayúsculas: el enlace que escribe la app (`![[2026-11-03-091500.m4a]]`), o cualquier otro (`[[…|alias]]`, `[…](recordings/…)`). "Entero" quiere decir sin letra, número, `.`, `_` ni `-` pegados delante, ni letra, número, `_` o `-` detrás: `…-091500.m4a` no cuenta como `…-091500-2.m4a`. Si ninguna nota lo nombra, está **pendiente**.
 - **Lo que hace el script** con un pendiente: transcribirlo y crear una nota que lo enlace (`![[2026-11-03-091500.m4a]]`), por ejemplo con `metalmind add`. Esa nota es justo la marca de transcrito, así que la próxima pasada se lo salta. El audio no se toca ni se mueve: es la fuente de verdad, y el texto se puede regenerar.
 - **Esperar un poco**: con Whisper en el teléfono, el audio llega al vault al detener y la nota que lo enlaza llega después, cuando se guarda la captura (segundos o minutos; Syncthing los puede traer en cualquier orden). Conviene procesar solo los audios sin cambios desde hace un rato (por ejemplo, `mtime` de más de 30 minutos) y volver a mirar que siga pendiente justo antes de crear la nota.
 - **No buscar en carpetas ocultas** del vault: `.stversions/` (las versiones viejas de Syncthing) puede tener una nota borrada que lo nombraba, y `.git/`, `.metalmind/` tampoco son notas.
 
-En shell, para un audio:
+En bash (`${name//…}` no existe en `dash`), para un audio:
 
-```sh
+```bash
 name=2026-11-03-091500.m4a
 pattern="(^|[^[:alnum:]._-])${name//./\\.}([^[:alnum:]_-]|\$)"
 (cd "$VAULT" && grep -rqiE --include='*.md' --exclude-dir='.?*' -- "$pattern" .) && echo transcrito || echo pendiente
 ```
 
-La regla vive en `core` (`AudioInbox.isTranscribed`, con tests): si cambia, cambia ahí y aquí.
+La regla vive en `core` (`AudioRecordings.isTranscribed`, con tests): si cambia, cambia ahí y aquí.
 
-**Por qué una nota que lo enlaza y no un `.md` hermano** (`buzon/audio/2026-11-03-091500.md`): en Metalmind todo `.md` es una nota, y una sin tags es del buzón. Un `.md` por audio llenaría el buzón de notas de relleno o con el mismo texto que la nota de verdad. Además, la nota que enlaza el audio es lo que de todas formas se crea (la captura en el teléfono, `metalmind add` en el script): la marca no es un archivo aparte que se pueda desincronizar, perder o borrar sin la nota, y si alguien borra el enlace a propósito, el audio vuelve a estar pendiente, que es lo correcto porque ninguna nota guarda su texto.
+**Por qué una nota que lo enlaza y no un `.md` hermano** (`recordings/2026-11-03-091500.md`): en Metalmind todo `.md` es una nota, y una sin tags es del buzón. Un `.md` por audio llenaría el buzón de notas de relleno o con el mismo texto que la nota de verdad. Además, la nota que enlaza el audio es lo que de todas formas se crea (la captura en el teléfono, `metalmind add` en el script): la marca no es un archivo aparte que se pueda desincronizar, perder o borrar sin la nota, y si alguien borra el enlace a propósito, el audio vuelve a estar pendiente, que es lo correcto porque ninguna nota guarda su texto.
 
 ### Entrar más rápido
 
@@ -180,7 +180,7 @@ Con git funciona igual: elige la carpeta del clon (por ejemplo, la de Termux o l
 
 ## Desarrollo
 
-- `core/`: Kotlin puro, sin Android. Nombres de archivo, contenido y el "crear sin pisar", los tags, los links (`LinkCompletion`), el formato (`Formatting`), el índice del vault (`VaultIndex`), la búsqueda (`NoteSearch`), el markdown de la vista de nota (`NoteMarkdown`) y las notas de voz (`VoiceSession`, `VoiceRecorder`, `Transcript`, el buzón de audio y su contrato en `AudioInbox`, el ajuste `WhisperSetting`, la lista de modelos en `VoiceModels`). Tests JVM: `./gradlew :core:test`.
+- `core/`: Kotlin puro, sin Android. Nombres de archivo, contenido y el "crear sin pisar", los tags, los links (`LinkCompletion`), el formato (`Formatting`), el índice del vault (`VaultIndex`), la búsqueda (`NoteSearch`), el markdown de la vista de nota (`NoteMarkdown`) y las notas de voz (`VoiceSession`, `VoiceRecorder`, `Transcript`, las grabaciones y su contrato en `AudioRecordings`, el ajuste `WhisperSetting`, la lista de modelos en `VoiceModels`). Tests JVM: `./gradlew :core:test`.
 - `app/`: la app, Jetpack Compose. Lee y escribe en la carpeta con el Storage Access Framework. Cuándo hay dos paneles y cómo se mueven las flechas por la lista están en `Panes`, con tests JVM: `./gradlew :app:testDebugUnitTest`.
 
 - `app/src/main/cpp/`: el puente JNI con whisper.cpp. CMake baja la versión fijada (con su SHA-256) y compila ggml con una variante por cada familia de CPU ARM (dotprod, fp16, i8mm, SVE…); al arrancar se carga la mejor que tenga el teléfono. El código nativo se compila en Release (`-O3`) también en el APK debug: sin optimizar, whisper va unas 30 veces más lento (en el emulador, 199 s contra 7 s para 24 s de audio). CI lo comprueba. Whisper usa un hilo por núcleo sin contar los pequeños (`TranscribeThreads`), nunca más que los núcleos disponibles: con un hilo de más, cada paso espera al que no tiene núcleo y tarda decenas de veces más. Hace falta el NDK (`ndk;27.3.13750724`) y CMake 3.31.6 del SDK; Gradle los instala si faltan y aceptaste las licencias. Solo `arm64-v8a` (teléfonos) y `x86_64` (emulador).
@@ -199,6 +199,6 @@ adb logcat -s WhisperDeviceTest Whisper whisper   # el texto, el tiempo, cuánta
 
 En logcat, `Whisper` dice cuántos hilos usa, si ggml está optimizado y qué instrucciones tiene la variante elegida (`DOTPROD`, `MATMUL_INT8` = i8mm, `SVE`…); `whisper` dice de qué archivo la cargó (`load_backend: loaded CPU backend from …/libggml-cpu-android_armv8.6_1.so`). Para comparar hilos: `./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.threads=6`.
 
-Sin esos archivos, `WhisperDeviceTest` se salta. `VoiceInboxDeviceTest` comprueba el m4a y, si la app ya tiene carpeta elegida, que el audio llegue a `buzon/audio/` sin pisar otro y que, sin carpeta, espere en la app y pase después. El micrófono del emulador no recibe audio del anfitrión con PipeWire, por eso la prueba usa un WAV en lugar del micrófono; lo demás (VoiceSession, JNI, whisper) es lo mismo que en la app.
+Sin esos archivos, `WhisperDeviceTest` se salta. `VoiceRecordingsDeviceTest` comprueba el m4a y, si la app ya tiene carpeta elegida, que el audio llegue a `recordings/` sin pisar otro y que, sin carpeta, espere en la app y pase después. El micrófono del emulador no recibe audio del anfitrión con PipeWire, por eso la prueba usa un WAV en lugar del micrófono; lo demás (VoiceSession, JNI, whisper) es lo mismo que en la app.
 
 Licencia: GPL-3.0. whisper.cpp y ggml son MIT; los modelos de Whisper, MIT (OpenAI).
