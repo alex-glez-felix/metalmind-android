@@ -88,7 +88,9 @@ Con teclado físico, en la captura con dos paneles (en un panel, `Ctrl+K`, `Ente
 
 El micrófono de arriba **graba siempre a un audio en el vault**, sin red y sin modelo: al detener, el audio queda en `recordings/` y la app avisa dónde (*Audio guardado en recordings/2026-11-03-091500.m4a*). El audio es la fuente de verdad; el texto se saca de él en el teléfono, con Whisper, o después, fuera del teléfono (ver [Audios pendientes](#audios-pendientes)).
 
-- **Grabar**: pausa, sigue y *Guardar audio* (con Whisper, *Transcribir*). Hasta 10 minutos. La pantalla queda encendida mientras graba; salir de la app corta la grabación sin guardarla.
+- **Grabar**: pausa, sigue y *Guardar audio* (con Whisper, *Transcribir*). Hasta 10 minutos. La pantalla queda encendida mientras graba.
+- **Salir de la app mientras grabas** (botón de inicio, cambiar de app, Atrás, bloquear la pantalla, una llamada, o abrir el navegador o el selector de archivos desde los ajustes de voz) detiene la grabación y guarda lo grabado en `recordings/`, igual que *Guardar audio*. No se graba en segundo plano y no se transcribe, aunque Whisper esté encendido: el audio queda pendiente. La próxima vez que veas la app, un aviso dice dónde quedó.
+- **Si el sistema mata la app a mitad de la grabación**, lo grabado se pierde: hasta detener solo está en memoria. Pasa lo mismo si la mata en los segundos que tarda en guardarse después de salir. Un audio a medio codificar nunca llega a `recordings/`.
 - **Descartar** tira la grabación: no queda ningún audio. Es la única forma de que una grabación no llegue a `recordings/`.
 - **Dónde**: `recordings/` **dentro de la carpeta elegida**, igual que las notas. Si elegiste la raíz del vault, es `<vault>/recordings/`; si elegiste una subcarpeta (por ejemplo `capturas/`), es `capturas/recordings/`. La app la crea si no está.
 - **Formato y nombre**: m4a (AAC, unos 240 KB por minuto), con la fecha y la hora de cuando se detuvo: `2026-11-03-091500.m4a`. Si el nombre ya existe, `-2`, `-3`, …: nunca se pisa un archivo.
