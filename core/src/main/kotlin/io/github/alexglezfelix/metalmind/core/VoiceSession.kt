@@ -64,8 +64,11 @@ sealed interface VoiceState {
         val audioError: String? = null,
     ) : VoiceState
 
-    /** Se grabó silencio, o whisper no reconoció nada; el audio quedó igual. */
-    data class NothingHeard(val audio: String?) : VoiceState
+    /**
+     * Se grabó silencio, o whisper no reconoció nada; el audio quedó igual como
+     * [audio] (`null` si no se pudo guardar: [audioError] dice por qué).
+     */
+    data class NothingHeard(val audio: String?, val audioError: String? = null) : VoiceState
 
     /** Algo falló; si el audio alcanzó a guardarse, [audio] es su nombre. */
     data class Failed(val message: String, val audio: String? = null) : VoiceState
@@ -99,6 +102,9 @@ class VoiceSession(
     /** El nombre del audio de esta nota, en cuanto quedó en el buzón. */
     @Volatile private var audio: String? = null
 
+    /** Por qué no quedó en el buzón, si falló al guardarlo. */
+    @Volatile private var saveError: String? = null
+
     val busy: Boolean get() = job?.isActive == true
 
     fun start() {
@@ -114,6 +120,7 @@ class VoiceSession(
         recorder = rec
         cancelled = false
         audio = null
+        saveError = null
         _state.value = VoiceState.Recording(0, 0f, paused = false)
         job = scope.launch {
             val end = try {
@@ -149,16 +156,17 @@ class VoiceSession(
         // Primero el audio, siempre: es la fuente de verdad. Ni el silencio,
         // ni whisper apagado, ni un fallo al transcribir lo pierden.
         _state.value = VoiceState.Saving
-        val (saved, saveError) = try {
+        val (saved, error) = try {
             sink.save(samples) to null
         } catch (e: Exception) {
             null to (e.message ?: e.javaClass.simpleName)
         }
         audio = saved
+        saveError = error
         if (!transcribe()) {
-            return if (saved != null) VoiceState.Saved(saved) else VoiceState.Failed(saveError!!)
+            return if (saved != null) VoiceState.Saved(saved) else VoiceState.Failed(error!!)
         }
-        if (Pcm.isSilent(samples)) return VoiceState.NothingHeard(saved)
+        if (Pcm.isSilent(samples)) return VoiceState.NothingHeard(saved, error)
         if (cancelled) return afterCancel()
         val audioSeconds = samples.size / VoiceRecorder.SAMPLE_RATE
         _state.value = VoiceState.Transcribing(0, audioSeconds)
@@ -169,19 +177,20 @@ class VoiceSession(
             }
         } catch (e: Exception) {
             val message = e.message ?: e.javaClass.simpleName
-            return VoiceState.Failed(if (saveError != null) "$message; $saveError" else message, saved)
+            return VoiceState.Failed(if (error != null) "$message; $error" else message, saved)
         } ?: return afterCancel()
         val millis = clock() - start
         val text = Transcript.clean(raw)
         return if (text.isEmpty()) {
-            VoiceState.NothingHeard(saved)
+            VoiceState.NothingHeard(saved, error)
         } else {
-            VoiceState.Done(text, saved, millis, audioSeconds, saveError)
+            VoiceState.Done(text, saved, millis, audioSeconds, error)
         }
     }
 
-    /** Tras cancelar: si el audio ya estaba en el buzón, ahí se queda. */
-    private fun afterCancel(): VoiceState = audio?.let { VoiceState.Saved(it) } ?: VoiceState.Idle
+    /** Tras cancelar: si el audio ya estaba en el buzón, ahí se queda; si no se pudo guardar, se dice. */
+    private fun afterCancel(): VoiceState =
+        audio?.let { VoiceState.Saved(it) } ?: saveError?.let { VoiceState.Failed(it) } ?: VoiceState.Idle
 
     fun pause() {
         if (_state.value !is VoiceState.Recording) return
@@ -202,7 +211,8 @@ class VoiceSession(
 
     /**
      * Grabando, descarta lo grabado: no queda audio. Después de detener, corta
-     * la transcripción, pero el audio ya está en el buzón y ahí se queda.
+     * la transcripción, pero el audio ya está en el buzón y ahí se queda (si no
+     * se pudo guardar, termina en [VoiceState.Failed]).
      */
     fun cancel() {
         if (!busy) return

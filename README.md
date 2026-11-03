@@ -100,7 +100,7 @@ El micrófono de arriba **graba siempre a un audio en el vault**, sin red y sin 
 Opcional y **apagado de entrada**. Mientras grabas, toca *Transcribir en el teléfono: no* para abrir los ajustes de voz y enciende *Transcribir en el teléfono con Whisper*. Con Whisper encendido, al detener la voz pasa a texto **en el teléfono, sin red** y sin Google Play Services, con [whisper.cpp](https://github.com/ggml-org/whisper.cpp). El texto queda en el campo, donde está el cursor, con el enlace al audio debajo (`![[2026-11-03-091500.m4a]]`), para revisarlo antes de guardar; el nombre de la nota sale de la primera línea, como en cualquier captura.
 
 - **Sin modelo**: con Whisper encendido, el micrófono pide primero el modelo (abajo). Ahí mismo se puede apagar Whisper y *Grabar* solo el audio.
-- **Si falla la transcripción** (o no se oyó nada, o la cortas con *No transcribir*), el audio ya está en el buzón y la app lo dice.
+- **Si falla la transcripción** (o no se oyó nada, o la cortas con *No transcribir*), el audio ya está en el buzón y la app lo dice. Si fue el audio lo que no se pudo guardar, también lo dice, y por qué.
 - **Idioma**: español, con las palabras en inglés tal como se dicen ("revisar el pull request").
 - **Cuánto tarda**: mientras transcribe se ve el tiempo que lleva y cuánto audio era; al terminar, un aviso dice cuánto tardó (*Transcrito en 0:08 (audio de 0:30)*). Si `small` tarda más que el audio, prueba `base`.
 - **Si actualizas** desde una versión que ya transcribía y tenías un modelo importado, Whisper sigue encendido: nada cambia sin avisar. En una instalación nueva viene apagado.
