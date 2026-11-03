@@ -86,6 +86,11 @@ class VoiceSession(
     private val sink: AudioSink,
     /** Si Whisper está encendido; se pregunta al detener la grabación. */
     private val transcribe: () -> Boolean = { true },
+    /**
+     * Se salió de la app grabando y lo grabado ya se guardó ([audio]) o no se
+     * pudo ([error]). Se llama aunque ya no haya pantalla que mire [state].
+     */
+    private val onLeft: (audio: String?, error: String?) -> Unit = { _, _ -> },
     private val io: CoroutineDispatcher = Dispatchers.IO,
     /** Milisegundos de un reloj monótono, para medir la transcripción. */
     private val clock: () -> Long = { System.nanoTime() / 1_000_000 },
@@ -98,6 +103,9 @@ class VoiceSession(
 
     /** Lo pone [cancel]: lo que termine después ya no cambia el estado. */
     @Volatile private var cancelled = false
+
+    /** Lo pone [leave]: se guarda lo grabado, no se transcribe y nada lo descarta. */
+    @Volatile private var leaving = false
 
     /** El nombre del audio de esta nota, en cuanto quedó en el vault. */
     @Volatile private var audio: String? = null
@@ -119,6 +127,7 @@ class VoiceSession(
         }
         recorder = rec
         cancelled = false
+        leaving = false
         audio = null
         saveError = null
         _state.value = VoiceState.Recording(0, 0f, paused = false)
@@ -133,7 +142,7 @@ class VoiceSession(
             recorder = null
             _state.update {
                 when {
-                    !cancelled -> end
+                    !cancelled || leaving -> end
                     // Cancelado a mitad de camino: lo que haya quedado en el vault se dice.
                     it is VoiceState.Recording || it is VoiceState.Saving || it is VoiceState.Transcribing -> afterCancel()
                     else -> it
@@ -153,6 +162,8 @@ class VoiceSession(
                 }
             }
         } ?: return VoiceState.Idle
+        // Se salió antes de la primera lectura: no hay audio que guardar.
+        if (leaving && samples.isEmpty()) return VoiceState.Idle
         // Primero el audio, siempre: es la fuente de verdad. Ni el silencio,
         // ni whisper apagado, ni un fallo al transcribir lo pierden.
         _state.value = VoiceState.Saving
@@ -163,6 +174,10 @@ class VoiceSession(
         }
         audio = saved
         saveError = error
+        if (leaving) {
+            onLeft(saved, error)
+            return VoiceState.Idle
+        }
         if (!transcribe()) {
             return if (saved != null) VoiceState.Saved(saved) else VoiceState.Failed(error!!)
         }
@@ -210,14 +225,27 @@ class VoiceSession(
     }
 
     /**
-     * Grabando, descarta lo grabado: no queda audio. Después de detener, corta
-     * la transcripción, pero el audio ya está en el vault y ahí se queda (si no
-     * se pudo guardar, termina en [VoiceState.Failed]).
+     * Se sale de la app: lo grabado se guarda como al [stop], pero sin
+     * transcribir, y [onLeft] lo cuenta. Sigue aunque se cancele el scope
+     * después: el guardado bloquea su hilo hasta terminar. Si ya está
+     * transcribiendo, no cambia nada: el audio ya está en el vault.
+     */
+    fun leave() {
+        val now = _state.value
+        if (now !is VoiceState.Recording && now !is VoiceState.Saving) return
+        leaving = true
+        recorder?.stop()
+    }
+
+    /**
+     * Grabando, descarta lo grabado: no queda audio. Después de detener o de
+     * [leave], el audio se queda: solo corta la transcripción (si no se pudo
+     * guardar, termina en [VoiceState.Failed]).
      */
     fun cancel() {
         if (!busy) return
         cancelled = true
-        recorder?.cancel()
+        if (!leaving) recorder?.cancel()
         transcriber.cancel()
         // Mientras se escribe el audio no se interrumpe: al terminar, start() dice dónde quedó.
         _state.update { if (it is VoiceState.Saving) it else afterCancel() }
